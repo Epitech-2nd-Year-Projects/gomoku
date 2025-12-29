@@ -28,15 +28,25 @@ impl GameState {
         "OK".to_string()
     }
 
-    pub fn handle_turn(&mut self, x: usize, y: usize) -> String {
+    pub fn validate_move(&self, x: usize, y: usize) -> Result<(), &'static str> {
         if !self.is_initialized {
-            return "ERROR game not initialized".to_string();
+            return Err("ERROR game not initialized");
         }
         if x >= self.size || y >= self.size {
-            return "ERROR coordinates out of range".to_string();
+            return Err("ERROR coordinates out of range");
+        }
+        if self.board.get_cell(x, y) == Some(Cell::Forbidden) {
+            return Err("ERROR move forbidden");
         }
         if !self.board.is_empty(x, y) {
-            return "ERROR cell already occupied".to_string();
+            return Err("ERROR cell already occupied");
+        }
+        Ok(())
+    }
+
+    pub fn handle_turn(&mut self, x: usize, y: usize) -> String {
+        if let Err(e) = self.validate_move(x, y) {
+            return e.to_string();
         }
 
         self.board.set_cell(x, y, Cell::OpStone).unwrap();
@@ -90,13 +100,17 @@ impl GameState {
 
     fn make_move(&mut self) -> String {
         // TODO: implement actual AI logic
-        if self.board.is_empty(10, 10) {
+        if self.validate_move(10, 10).is_ok() {
             self.board.set_cell(10, 10, Cell::MyStone).unwrap();
             return "10,10".to_string();
         }
 
-        let next_empty = self.board.iter_empty().next();
-        if let Some((x, y)) = next_empty {
+        let best_move = self
+            .board
+            .iter_empty()
+            .find(|&(x, y)| self.validate_move(x, y).is_ok());
+
+        if let Some((x, y)) = best_move {
             self.board.set_cell(x, y, Cell::MyStone).unwrap();
             return format!("{},{}", x, y);
         }
@@ -115,6 +129,28 @@ mod tests {
         assert_eq!(game.handle_start(10), "ERROR unsupported size 10");
         assert_eq!(game.handle_start(20), "OK");
         assert!(game.is_initialized);
+    }
+
+    #[test]
+    fn test_validate_move() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert!(game.validate_move(10, 10).is_ok());
+
+        assert!(game.validate_move(20, 10).is_err());
+        assert!(game.validate_move(10, 20).is_err());
+
+        game.board.set_cell(10, 10, Cell::MyStone).unwrap();
+        assert!(game.validate_move(10, 10).is_err());
+        assert_eq!(
+            game.validate_move(10, 10),
+            Err("ERROR cell already occupied")
+        );
+
+        game.board.set_cell(11, 11, Cell::Forbidden).unwrap();
+        assert!(game.validate_move(11, 11).is_err());
+        assert_eq!(game.validate_move(11, 11), Err("ERROR move forbidden"));
     }
 
     #[test]
