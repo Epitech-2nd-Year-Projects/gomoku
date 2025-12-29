@@ -1,0 +1,5 @@
+/target
+/pbrain-gomoku-ai
+**/*.rs.bk
+*.swp
+.DS_Store
