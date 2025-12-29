@@ -128,10 +128,7 @@ impl GameState {
         if let Some((x, y)) = move_coords {
             self.board.set_cell(x, y, Cell::MyStone).unwrap();
 
-            if self.board.check_five_in_a_row(Cell::MyStone) {
-                self.game_in_progress = false;
-            }
-            if self.board.is_full() {
+            if self.game_over().is_some() {
                 self.game_in_progress = false;
             }
 
@@ -268,6 +265,23 @@ mod tests {
         let response = game.handle_turn(4, 0);
 
         assert!(!response.contains("ERROR"));
+        assert!(!game.game_in_progress);
+    }
+
+    #[test]
+    fn test_make_move_win() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 6..10 {
+            game.board.set_cell(x, 10, Cell::MyStone).unwrap();
+        }
+
+        let response = game.handle_turn(0, 0);
+
+        assert_eq!(response, "10,10");
+        assert_eq!(game.board.get_cell(10, 10), Some(Cell::MyStone));
+        assert!(game.game_over().is_some());
         assert!(!game.game_in_progress);
     }
 }
