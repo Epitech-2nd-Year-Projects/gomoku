@@ -1,3 +1,4 @@
+mod board;
 mod game;
 mod protocol;
 
