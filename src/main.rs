@@ -1,3 +1,4 @@
+mod game;
 mod protocol;
 
 use protocol::{parse_line, Command};
@@ -7,6 +8,7 @@ fn main() {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     let mut lines = stdin.lock().lines();
+    let mut game = crate::game::GameState::new();
 
     while let Some(line) = lines.next() {
         match line {
@@ -18,44 +20,55 @@ fn main() {
 
                 let command = parse_line(input);
                 match command {
-                    Command::Start(_) => {
-                        println!("OK");
+                    Command::Start(size) => {
+                        println!("{}", game.handle_start(size));
                     }
-                    Command::Turn(_, _) => {
-                        // TODO: Implement actual move logic
-                        println!("10,10");
+                    Command::Turn(x, y) => {
+                        println!("{}", game.handle_turn(x, y));
                     }
                     Command::Begin => {
-                        // TODO: Implement actual move logic
-                        println!("10,10");
+                        println!("{}", game.handle_begin());
                     }
                     Command::Board => {
-                        while let Some(board_line) = lines.next() {
-                            match board_line {
-                                Ok(content) => {
-                                    let content = content.trim();
-                                    if content == "DONE" {
+                        if game.handle_board_start() {
+                            while let Some(board_line) = lines.next() {
+                                match board_line {
+                                    Ok(content) => {
+                                        let content = content.trim();
+                                        if content == "DONE" {
+                                            println!("{}", game.handle_board_done());
+                                            break;
+                                        }
+
+                                        let parts: Vec<&str> = content.split(',').collect();
+                                        if parts.len() == 3 {
+                                            if let (Ok(x), Ok(y), Ok(field)) = (
+                                                parts[0].parse::<usize>(),
+                                                parts[1].parse::<usize>(),
+                                                parts[2].parse::<usize>(),
+                                            ) {
+                                                game.handle_board_move(x, y, field);
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Error reading board line: {}", e);
                                         break;
                                     }
-                                    // TODO: Parse board content
-                                }
-                                Err(e) => {
-                                    eprintln!("Error reading board line: {}", e);
-                                    break;
                                 }
                             }
+                        } else {
+                            println!("ERROR game not initialized");
                         }
-                        // TODO: Implement actual move logic
-                        println!("10,10");
                     }
                     Command::Info(_, _) => {
                         // Ignore INFO commands for now
                     }
                     Command::About => {
-                        println!("name=\"Brainrot\", version=\"1.0.0\", author=\"Brainrot\", country=\"FR\"");
+                        println!("name=\"pbrain-brainrot\", version=\"1.0.0\", author=\"Brainrot\", country=\"FR\"");
                     }
                     Command::Restart => {
-                        println!("OK");
+                        println!("{}", game.handle_restart());
                     }
                     Command::End => {
                         break;
