@@ -139,7 +139,7 @@ mod tests {
         board.set_cell(0, 0, Cell::MyStone).unwrap();
 
         let empty_cells: Vec<_> = board.iter_empty().collect();
-        assert_eq!(empty_cells.len(), 399); // 400 - 1
+        assert_eq!(empty_cells.len(), 399);
         assert!(!empty_cells.contains(&(0, 0)));
     }
 }
