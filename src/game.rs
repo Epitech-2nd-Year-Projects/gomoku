@@ -52,7 +52,24 @@ impl GameState {
         self.board.set_cell(x, y, Cell::OpStone).unwrap();
         self.game_in_progress = true;
 
+        if self.game_over().is_some() {
+            self.game_in_progress = false;
+        }
+
         self.make_move()
+    }
+
+    pub fn game_over(&self) -> Option<Cell> {
+        if self.board.check_five_in_a_row(Cell::MyStone) {
+            return Some(Cell::MyStone);
+        }
+        if self.board.check_five_in_a_row(Cell::OpStone) {
+            return Some(Cell::OpStone);
+        }
+        if self.board.is_full() {
+            return Some(Cell::Empty);
+        }
+        None
     }
 
     pub fn handle_begin(&mut self) -> String {
@@ -100,18 +117,21 @@ impl GameState {
 
     fn make_move(&mut self) -> String {
         // TODO: implement actual AI logic
-        if self.validate_move(10, 10).is_ok() {
-            self.board.set_cell(10, 10, Cell::MyStone).unwrap();
-            return "10,10".to_string();
-        }
+        let move_coords = if self.validate_move(10, 10).is_ok() {
+            Some((10, 10))
+        } else {
+            self.board
+                .iter_empty()
+                .find(|&(x, y)| self.validate_move(x, y).is_ok())
+        };
 
-        let best_move = self
-            .board
-            .iter_empty()
-            .find(|&(x, y)| self.validate_move(x, y).is_ok());
-
-        if let Some((x, y)) = best_move {
+        if let Some((x, y)) = move_coords {
             self.board.set_cell(x, y, Cell::MyStone).unwrap();
+
+            if self.game_over().is_some() {
+                self.game_in_progress = false;
+            }
+
             return format!("{},{}", x, y);
         }
 
@@ -204,6 +224,64 @@ mod tests {
 
         game.handle_restart();
         assert_eq!(game.board.get_cell(0, 0), Some(Cell::Empty));
+        assert!(!game.game_in_progress);
+    }
+
+    #[test]
+    fn test_game_over_win() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 0..5 {
+            game.board.set_cell(x, 0, Cell::MyStone).unwrap();
+        }
+        assert_eq!(game.game_over(), Some(Cell::MyStone));
+
+        game.handle_restart();
+        game.handle_start(20);
+
+        for x in 0..5 {
+            game.board.set_cell(x, 0, Cell::OpStone).unwrap();
+        }
+        assert_eq!(game.game_over(), Some(Cell::OpStone));
+    }
+
+    #[test]
+    fn test_game_over_draw() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+        assert_eq!(game.game_over(), None);
+    }
+
+    #[test]
+    fn test_turn_handling_loss() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 0..4 {
+            game.handle_board_move(x, 0, 2);
+        }
+
+        let response = game.handle_turn(4, 0);
+
+        assert!(!response.contains("ERROR"));
+        assert!(!game.game_in_progress);
+    }
+
+    #[test]
+    fn test_make_move_win() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 6..10 {
+            game.board.set_cell(x, 10, Cell::MyStone).unwrap();
+        }
+
+        let response = game.handle_turn(0, 0);
+
+        assert_eq!(response, "10,10");
+        assert_eq!(game.board.get_cell(10, 10), Some(Cell::MyStone));
+        assert!(game.game_over().is_some());
         assert!(!game.game_in_progress);
     }
 }

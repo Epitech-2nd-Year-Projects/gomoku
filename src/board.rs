@@ -86,6 +86,44 @@ impl Board {
         self.iter_indices()
             .filter(move |&(x, y)| self.is_empty(x, y))
     }
+
+    pub fn is_full(&self) -> bool {
+        self.iter_empty().next().is_none()
+    }
+
+    pub fn check_five_in_a_row(&self, player: Cell) -> bool {
+        let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
+
+        for y in 0..self.size {
+            for x in 0..self.size {
+                if self.get_cell(x, y) != Some(player) {
+                    continue;
+                }
+
+                for &(dx, dy) in &directions {
+                    let mut count = 1;
+                    for step in 1..5 {
+                        let nx = x as isize + dx * step;
+                        let ny = y as isize + dy * step;
+
+                        if nx < 0 || ny < 0 {
+                            break;
+                        }
+
+                        if self.get_cell(nx as usize, ny as usize) == Some(player) {
+                            count += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    if count >= 5 {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
 }
 
 impl fmt::Debug for Board {
@@ -141,5 +179,59 @@ mod tests {
         let empty_cells: Vec<_> = board.iter_empty().collect();
         assert_eq!(empty_cells.len(), 399);
         assert!(!empty_cells.contains(&(0, 0)));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_horizontal() {
+        let mut board = Board::default();
+        for x in 0..5 {
+            board.set_cell(x, 0, Cell::MyStone).unwrap();
+        }
+        assert!(board.check_five_in_a_row(Cell::MyStone));
+        assert!(!board.check_five_in_a_row(Cell::OpStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_vertical() {
+        let mut board = Board::default();
+        for y in 0..5 {
+            board.set_cell(0, y, Cell::OpStone).unwrap();
+        }
+        assert!(board.check_five_in_a_row(Cell::OpStone));
+        assert!(!board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_diagonal() {
+        let mut board = Board::default();
+        for i in 0..5 {
+            board.set_cell(i, i, Cell::MyStone).unwrap();
+        }
+        assert!(board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_anti_diagonal() {
+        let mut board = Board::default();
+        for i in 0..5 {
+            board.set_cell(i, 4 - i, Cell::MyStone).unwrap();
+        }
+        assert!(board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_interrupted() {
+        let mut board = Board::default();
+        for x in 0..4 {
+            board.set_cell(x, 0, Cell::MyStone).unwrap();
+        }
+        board.set_cell(5, 0, Cell::MyStone).unwrap();
+        assert!(!board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_is_full() {
+        let board = Board::default();
+        assert!(!board.is_full());
     }
 }
