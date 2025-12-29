@@ -35,6 +35,9 @@ impl GameState {
         if x >= self.size || y >= self.size {
             return Err("ERROR coordinates out of range");
         }
+        if self.board.get_cell(x, y) == Some(Cell::Forbidden) {
+            return Err("ERROR move forbidden");
+        }
         if !self.board.is_empty(x, y) {
             return Err("ERROR cell already occupied");
         }
@@ -140,6 +143,14 @@ mod tests {
 
         game.board.set_cell(10, 10, Cell::MyStone).unwrap();
         assert!(game.validate_move(10, 10).is_err());
+        assert_eq!(
+            game.validate_move(10, 10),
+            Err("ERROR cell already occupied")
+        );
+
+        game.board.set_cell(11, 11, Cell::Forbidden).unwrap();
+        assert!(game.validate_move(11, 11).is_err());
+        assert_eq!(game.validate_move(11, 11), Err("ERROR move forbidden"));
     }
 
     #[test]
