@@ -60,8 +60,11 @@ fn main() {
                     Command::End => {
                         break;
                     }
-                    Command::Unknown(_) => {
-                        println!("UNKNOWN");
+                    Command::Error(msg) => {
+                        println!("ERROR {}", msg);
+                    }
+                    Command::Unknown(msg) => {
+                        println!("UNKNOWN {}", msg);
                     }
                 }
 

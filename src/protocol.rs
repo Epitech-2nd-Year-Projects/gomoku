@@ -8,6 +8,7 @@ pub enum Command {
     End,
     About,
     Restart,
+    Error(String),
     Unknown(String),
 }
 
@@ -26,10 +27,10 @@ pub fn parse_line(line: &str) -> Command {
                 if let Ok(size) = parts[1].parse::<usize>() {
                     Command::Start(size)
                 } else {
-                    Command::Unknown(format!("Invalid size for START: {}", parts[1]))
+                    Command::Error(format!("Invalid size for START: {}", parts[1]))
                 }
             } else {
-                Command::Unknown("Missing size for START".to_string())
+                Command::Error("Missing size for START".to_string())
             }
         }
         "TURN" => {
@@ -37,10 +38,10 @@ pub fn parse_line(line: &str) -> Command {
                 parse_coordinates(parts[1])
                     .map(|(x, y)| Command::Turn(x, y))
                     .unwrap_or_else(|_| {
-                        Command::Unknown(format!("Invalid coordinates for TURN: {}", parts[1]))
+                        Command::Error(format!("Invalid coordinates for TURN: {}", parts[1]))
                     })
             } else {
-                Command::Unknown("Missing coordinates for TURN".to_string())
+                Command::Error("Missing coordinates for TURN".to_string())
             }
         }
         "BEGIN" => Command::Begin,
@@ -49,7 +50,7 @@ pub fn parse_line(line: &str) -> Command {
             if parts.len() >= 3 {
                 Command::Info(parts[1].to_string(), parts[2].to_string())
             } else {
-                Command::Unknown("Missing arguments for INFO".to_string())
+                Command::Error("Missing arguments for INFO".to_string())
             }
         }
         "END" => Command::End,
@@ -77,8 +78,8 @@ mod tests {
     fn test_parse_start() {
         assert_eq!(parse_line("START 20"), Command::Start(20));
         match parse_line("START invalid") {
-            Command::Unknown(_) => assert!(true),
-            _ => assert!(false, "Should be Unknown"),
+            Command::Error(_) => assert!(true),
+            _ => assert!(false, "Should be Error"),
         }
     }
 
@@ -86,8 +87,8 @@ mod tests {
     fn test_parse_turn() {
         assert_eq!(parse_line("TURN 10,11"), Command::Turn(10, 11));
         match parse_line("TURN 10,invalid") {
-            Command::Unknown(_) => assert!(true),
-            _ => assert!(false, "Should be Unknown"),
+            Command::Error(_) => assert!(true),
+            _ => assert!(false, "Should be Error"),
         }
     }
 
