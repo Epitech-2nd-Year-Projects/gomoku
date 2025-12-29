@@ -48,7 +48,14 @@ fn main() {
                                                 parts[2].parse::<usize>(),
                                             ) {
                                                 game.handle_board_move(x, y, field);
+                                            } else {
+                                                eprintln!("Error: Failed to parse integers in board line '{}'", content);
                                             }
+                                        } else {
+                                            eprintln!(
+                                                "Error: Invalid format for board line '{}'",
+                                                content
+                                            );
                                         }
                                     }
                                     Err(e) => {

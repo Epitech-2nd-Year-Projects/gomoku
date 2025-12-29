@@ -119,3 +119,69 @@ impl GameState {
         "ERROR board full".to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_initialization() {
+        let mut game = GameState::new();
+        assert_eq!(game.handle_start(10), "ERROR unsupported size 10");
+        assert_eq!(game.handle_start(20), "OK");
+        assert!(game.is_initialized);
+    }
+
+    #[test]
+    fn test_turn_handling() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert_eq!(game.handle_turn(20, 20), "ERROR coordinates out of range");
+
+        let response = game.handle_turn(0, 0);
+        assert!(!response.contains("ERROR"));
+        assert_eq!(game.board[0][0], Cell::OpStone);
+
+        let parts: Vec<&str> = response.split(',').collect();
+        let bot_x: usize = parts[0].parse().unwrap();
+        let bot_y: usize = parts[1].parse().unwrap();
+        assert_eq!(game.board[bot_x][bot_y], Cell::MyStone);
+
+        assert_eq!(
+            game.handle_turn(bot_x, bot_y),
+            "ERROR cell already occupied"
+        );
+    }
+
+    #[test]
+    fn test_board_command() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        game.handle_board_start();
+        game.handle_board_move(10, 10, 1);
+        game.handle_board_move(10, 11, 2);
+
+        assert_eq!(game.board[10][10], Cell::MyStone);
+        assert_eq!(game.board[10][11], Cell::OpStone);
+
+        let response = game.handle_board_done();
+        assert!(!response.contains("ERROR"));
+        assert_ne!(response, "10,10");
+        assert_ne!(response, "10,11");
+    }
+
+    #[test]
+    fn test_restart() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        game.handle_turn(0, 0);
+        assert_ne!(game.board[0][0], Cell::Empty);
+
+        game.handle_restart();
+        assert_eq!(game.board[0][0], Cell::Empty);
+        assert!(!game.game_in_progress);
+    }
+}
