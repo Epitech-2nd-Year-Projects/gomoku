@@ -1,17 +1,10 @@
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub enum Cell {
-    #[default]
-    Empty,
-    MyStone,
-    OpStone,
-    Forbidden,
-}
+use crate::board::{Board, Cell};
 
 pub struct GameState {
     size: usize,
     is_initialized: bool,
     game_in_progress: bool,
-    board: [[Cell; 20]; 20],
+    board: Board,
 }
 
 impl GameState {
@@ -20,7 +13,7 @@ impl GameState {
             size: 0,
             is_initialized: false,
             game_in_progress: false,
-            board: [[Cell::default(); 20]; 20],
+            board: Board::default(),
         }
     }
 
@@ -31,7 +24,7 @@ impl GameState {
         self.size = size;
         self.is_initialized = true;
         self.game_in_progress = false;
-        self.board = [[Cell::Empty; 20]; 20];
+        self.board.clear();
         "OK".to_string()
     }
 
@@ -42,11 +35,11 @@ impl GameState {
         if x >= self.size || y >= self.size {
             return "ERROR coordinates out of range".to_string();
         }
-        if self.board[x][y] != Cell::Empty {
+        if !self.board.is_empty(x, y) {
             return "ERROR cell already occupied".to_string();
         }
 
-        self.board[x][y] = Cell::OpStone;
+        self.board.set_cell(x, y, Cell::OpStone).unwrap();
         self.game_in_progress = true;
 
         self.make_move()
@@ -65,19 +58,18 @@ impl GameState {
             return false;
         }
         self.game_in_progress = true;
-        self.board = [[Cell::Empty; 20]; 20];
+        self.board.clear();
         true
     }
 
     pub fn handle_board_move(&mut self, x: usize, y: usize, field: usize) {
-        if x < self.size && y < self.size {
-            self.board[x][y] = match field {
-                1 => Cell::MyStone,
-                2 => Cell::OpStone,
-                3 => Cell::Forbidden,
-                _ => Cell::Empty,
-            };
-        }
+        let cell = match field {
+            1 => Cell::MyStone,
+            2 => Cell::OpStone,
+            3 => Cell::Forbidden,
+            _ => Cell::Empty,
+        };
+        let _ = self.board.set_cell(x, y, cell);
     }
 
     pub fn handle_board_done(&mut self) -> String {
@@ -92,25 +84,23 @@ impl GameState {
             return "ERROR game not initialized".to_string();
         }
         self.game_in_progress = false;
-        self.board = [[Cell::Empty; 20]; 20];
+        self.board.clear();
         "OK".to_string()
     }
 
     fn make_move(&mut self) -> String {
         // TODO: implement actual AI logic
-        if self.board[10][10] == Cell::Empty {
-            self.board[10][10] = Cell::MyStone;
+        if self.board.is_empty(10, 10) {
+            self.board.set_cell(10, 10, Cell::MyStone).unwrap();
             return "10,10".to_string();
         }
 
-        for x in 0..self.size {
-            for y in 0..self.size {
-                if self.board[x][y] == Cell::Empty {
-                    self.board[x][y] = Cell::MyStone;
-                    return format!("{},{}", x, y);
-                }
-            }
+        let next_empty = self.board.iter_empty().next();
+        if let Some((x, y)) = next_empty {
+            self.board.set_cell(x, y, Cell::MyStone).unwrap();
+            return format!("{},{}", x, y);
         }
+
         "ERROR board full".to_string()
     }
 }
@@ -136,12 +126,12 @@ mod tests {
 
         let response = game.handle_turn(0, 0);
         assert!(!response.contains("ERROR"));
-        assert_eq!(game.board[0][0], Cell::OpStone);
+        assert_eq!(game.board.get_cell(0, 0), Some(Cell::OpStone));
 
         let parts: Vec<&str> = response.split(',').collect();
         let bot_x: usize = parts[0].parse().unwrap();
         let bot_y: usize = parts[1].parse().unwrap();
-        assert_eq!(game.board[bot_x][bot_y], Cell::MyStone);
+        assert_eq!(game.board.get_cell(bot_x, bot_y), Some(Cell::MyStone));
 
         assert_eq!(
             game.handle_turn(bot_x, bot_y),
@@ -158,8 +148,8 @@ mod tests {
         game.handle_board_move(10, 10, 1);
         game.handle_board_move(10, 11, 2);
 
-        assert_eq!(game.board[10][10], Cell::MyStone);
-        assert_eq!(game.board[10][11], Cell::OpStone);
+        assert_eq!(game.board.get_cell(10, 10), Some(Cell::MyStone));
+        assert_eq!(game.board.get_cell(10, 11), Some(Cell::OpStone));
 
         let response = game.handle_board_done();
         assert!(!response.contains("ERROR"));
@@ -173,10 +163,11 @@ mod tests {
         game.handle_start(20);
 
         game.handle_turn(0, 0);
-        assert_ne!(game.board[0][0], Cell::Empty);
+        assert!(game.board.get_cell(0, 0).is_some());
+        assert_ne!(game.board.get_cell(0, 0), Some(Cell::Empty));
 
         game.handle_restart();
-        assert_eq!(game.board[0][0], Cell::Empty);
+        assert_eq!(game.board.get_cell(0, 0), Some(Cell::Empty));
         assert!(!game.game_in_progress);
     }
 }
