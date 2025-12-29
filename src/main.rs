@@ -31,7 +31,7 @@ fn main() {
                     }
                     Command::Board => {
                         if game.handle_board_start() {
-                            while let Some(board_line) = lines.next() {
+                            for board_line in lines.by_ref() {
                                 match board_line {
                                     Ok(content) => {
                                         let content = content.trim();

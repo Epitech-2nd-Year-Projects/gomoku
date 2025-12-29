@@ -1,15 +1,10 @@
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Cell {
+    #[default]
     Empty,
     MyStone,
     OpStone,
     Forbidden,
-}
-
-impl Default for Cell {
-    fn default() -> Self {
-        Cell::Empty
-    }
 }
 
 pub struct GameState {
