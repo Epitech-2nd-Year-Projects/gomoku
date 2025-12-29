@@ -52,12 +52,8 @@ impl GameState {
         self.board.set_cell(x, y, Cell::OpStone).unwrap();
         self.game_in_progress = true;
 
-        if let Some(winner) = self.game_over() {
-            if winner == Cell::OpStone {
-                self.game_in_progress = false;
-            } else if winner == Cell::Empty {
-                self.game_in_progress = false;
-            }
+        if self.game_over().is_some() {
+            self.game_in_progress = false;
         }
 
         self.make_move()
