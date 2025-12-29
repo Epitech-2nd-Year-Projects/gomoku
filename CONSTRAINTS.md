@@ -23,7 +23,7 @@ This document outlines the hard constraints, rules, and acceptance criteria for 
 
 ### Application
 - [ ] **Language**: Any (Rust chosen), as long as it works on the target environment ("the dump").
-- [ ] **Protocol**: Must comply with [Epitech Mirror] protocol (Mandatory commands).
+- [ ] **Protocol**: Must comply with the official Epitech Gomoku AI protocol (mandatory commands).
 
 ## Game rules
 
