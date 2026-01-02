@@ -12,16 +12,23 @@ pub enum Command {
     Unknown(String),
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum BoardLine {
+    Move { x: usize, y: usize, field: usize },
+    Done,
+}
+
 pub fn parse_line(line: &str) -> Command {
     let line = line.trim();
     if line.is_empty() {
-        return Command::Unknown("".to_string());
+        return Command::Unknown(String::new());
     }
 
     let parts: Vec<&str> = line.split_whitespace().collect();
-    let command = parts[0];
+    let raw_command = parts[0];
+    let command = raw_command.to_ascii_uppercase();
 
-    match command {
+    match command.as_str() {
         "START" => {
             if parts.len() >= 2 {
                 if let Ok(size) = parts[1].parse::<usize>() {
@@ -48,7 +55,8 @@ pub fn parse_line(line: &str) -> Command {
         "BOARD" => Command::Board,
         "INFO" => {
             if parts.len() >= 3 {
-                Command::Info(parts[1].to_string(), parts[2].to_string())
+                let value = parts[2..].join(" ");
+                Command::Info(parts[1].to_string(), value)
             } else {
                 Command::Error("Missing arguments for INFO".to_string())
             }
@@ -56,7 +64,7 @@ pub fn parse_line(line: &str) -> Command {
         "END" => Command::End,
         "ABOUT" => Command::About,
         "RESTART" => Command::Restart,
-        _ => Command::Unknown(format!("Unknown command: {}", command)),
+        _ => Command::Unknown(raw_command.to_string()),
     }
 }
 
@@ -65,9 +73,46 @@ fn parse_coordinates(s: &str) -> Result<(usize, usize), ()> {
     if coords.len() != 2 {
         return Err(());
     }
-    let x = coords[0].parse::<usize>().map_err(|_| ())?;
-    let y = coords[1].parse::<usize>().map_err(|_| ())?;
+    let x = coords[0].trim().parse::<usize>().map_err(|_| ())?;
+    let y = coords[1].trim().parse::<usize>().map_err(|_| ())?;
     Ok((x, y))
+}
+
+pub fn parse_board_line(line: &str) -> Result<BoardLine, String> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return Err("Empty BOARD line".to_string());
+    }
+    if trimmed.eq_ignore_ascii_case("DONE") {
+        return Ok(BoardLine::Done);
+    }
+
+    let mut parts = trimmed.split(',').map(str::trim);
+    let x_str = parts
+        .next()
+        .ok_or_else(|| format!("Invalid BOARD line '{}'", trimmed))?;
+    let y_str = parts
+        .next()
+        .ok_or_else(|| format!("Invalid BOARD line '{}'", trimmed))?;
+    let field_str = parts
+        .next()
+        .ok_or_else(|| format!("Invalid BOARD line '{}'", trimmed))?;
+
+    if parts.next().is_some() {
+        return Err(format!("Invalid BOARD line '{}'", trimmed));
+    }
+
+    let x = x_str
+        .parse::<usize>()
+        .map_err(|_| format!("Invalid BOARD line '{}'", trimmed))?;
+    let y = y_str
+        .parse::<usize>()
+        .map_err(|_| format!("Invalid BOARD line '{}'", trimmed))?;
+    let field = field_str
+        .parse::<usize>()
+        .map_err(|_| format!("Invalid BOARD line '{}'", trimmed))?;
+
+    Ok(BoardLine::Move { x, y, field })
 }
 
 #[cfg(test)]
@@ -115,5 +160,37 @@ mod tests {
             Command::Unknown(_) => assert!(true),
             _ => assert!(false, "Should be Unknown"),
         }
+    }
+
+    #[test]
+    fn test_parse_board_line_move() {
+        assert_eq!(
+            parse_board_line("10,11,2"),
+            Ok(BoardLine::Move {
+                x: 10,
+                y: 11,
+                field: 2
+            })
+        );
+        assert_eq!(
+            parse_board_line(" 3, 4 , 1 "),
+            Ok(BoardLine::Move {
+                x: 3,
+                y: 4,
+                field: 1
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_board_line_done() {
+        assert_eq!(parse_board_line("DONE"), Ok(BoardLine::Done));
+    }
+
+    #[test]
+    fn test_parse_board_line_invalid() {
+        assert!(parse_board_line("10,11").is_err());
+        assert!(parse_board_line("10,xx,1").is_err());
+        assert!(parse_board_line("").is_err());
     }
 }
