@@ -147,6 +147,14 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_case_insensitive_commands() {
+        assert_eq!(parse_line("start 20"), Command::Start(20));
+        assert_eq!(parse_line("Start 20"), Command::Start(20));
+        assert_eq!(parse_line("begin"), Command::Begin);
+        assert_eq!(parse_line("tUrN 3,4"), Command::Turn(3, 4));
+    }
+
+    #[test]
     fn test_parse_info() {
         assert_eq!(
             parse_line("INFO timeout_turn 1000"),
@@ -191,6 +199,7 @@ mod tests {
     fn test_parse_board_line_invalid() {
         assert!(parse_board_line("10,11").is_err());
         assert!(parse_board_line("10,xx,1").is_err());
+        assert!(parse_board_line("1,2,3,4").is_err());
         assert!(parse_board_line("").is_err());
     }
 }
