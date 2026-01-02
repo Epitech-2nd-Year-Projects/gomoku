@@ -230,6 +230,34 @@ mod tests {
     }
 
     #[test]
+    fn test_board_move_errors() {
+        let mut game = GameState::new();
+        assert_eq!(
+            game.handle_board_start(),
+            Err("ERROR game not initialized")
+        );
+        assert_eq!(
+            game.handle_board_move(0, 0, 1),
+            Err("ERROR game not initialized")
+        );
+
+        game.handle_start(20);
+
+        assert_eq!(
+            game.handle_board_move(20, 0, 1),
+            Err("ERROR coordinates out of range")
+        );
+        assert_eq!(
+            game.handle_board_move(0, 20, 1),
+            Err("ERROR coordinates out of range")
+        );
+        assert_eq!(
+            game.handle_board_move(0, 0, 9),
+            Err("ERROR invalid board field")
+        );
+    }
+
+    #[test]
     fn test_restart() {
         let mut game = GameState::new();
         game.handle_start(20);
