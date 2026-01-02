@@ -132,14 +132,7 @@ impl GameState {
     }
 
     fn generate_move(&mut self) -> String {
-        // TODO: implement actual AI logic
-        let move_coords = if self.validate_move(10, 10).is_ok() {
-            Some((10, 10))
-        } else {
-            self.board
-                .iter_empty()
-                .find(|&(x, y)| self.validate_move(x, y).is_ok())
-        };
+        let move_coords = self.fallback_move();
 
         if let Some((x, y)) = move_coords {
             self.board.set_cell(x, y, Cell::MyStone).unwrap();
@@ -152,6 +145,18 @@ impl GameState {
         }
 
         "ERROR board full".to_string()
+    }
+
+    fn fallback_move(&self) -> Option<(usize, usize)> {
+        // Deterministic baseline: center if available, else first empty.
+        let center = self.size / 2;
+        if self.validate_move(center, center).is_ok() {
+            return Some((center, center));
+        }
+
+        self.board
+            .iter_empty()
+            .find(|&(x, y)| self.validate_move(x, y).is_ok())
     }
 }
 
@@ -187,6 +192,17 @@ mod tests {
         game.board.set_cell(11, 11, Cell::Forbidden).unwrap();
         assert!(game.validate_move(11, 11).is_err());
         assert_eq!(game.validate_move(11, 11), Err("ERROR move forbidden"));
+    }
+
+    #[test]
+    fn test_fallback_move_center_then_first_empty() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert_eq!(game.fallback_move(), Some((10, 10)));
+
+        game.board.set_cell(10, 10, Cell::OpStone).unwrap();
+        assert_eq!(game.fallback_move(), Some((0, 0)));
     }
 
     #[test]
