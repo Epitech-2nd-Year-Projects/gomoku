@@ -148,7 +148,6 @@ impl GameState {
     }
 
     fn fallback_move(&self) -> Option<(usize, usize)> {
-        // Deterministic baseline: center if available, else first empty.
         let center = self.size / 2;
         if self.validate_move(center, center).is_ok() {
             return Some((center, center));
