@@ -2,14 +2,69 @@ mod board;
 mod game;
 mod protocol;
 
-use protocol::{parse_line, Command};
+use crate::game::GameState;
+use protocol::{parse_board_line, parse_line, BoardLine, Command};
 use std::io::{self, BufRead, Write};
+
+fn handle_board_section<I>(lines: &mut I, game: &mut GameState) -> String
+where
+    I: Iterator<Item = Result<String, io::Error>>,
+{
+    let mut error: Option<String> = None;
+    let mut done_received = false;
+
+    if let Err(err) = game.handle_board_start() {
+        error = Some(err.to_string());
+    }
+
+    for board_line in lines {
+        match board_line {
+            Ok(content) => {
+                let content = content.trim();
+                if content.is_empty() {
+                    continue;
+                }
+                match parse_board_line(content) {
+                    Ok(BoardLine::Done) => {
+                        done_received = true;
+                        break;
+                    }
+                    Ok(BoardLine::Move { x, y, field }) => {
+                        if error.is_none() {
+                            if let Err(err) = game.handle_board_move(x, y, field) {
+                                error = Some(err.to_string());
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        if error.is_none() {
+                            error = Some(format!("ERROR {}", err));
+                        }
+                    }
+                }
+            }
+            Err(err) => {
+                error = Some(format!("ERROR reading board line: {}", err));
+                break;
+            }
+        }
+    }
+
+    if !done_received && error.is_none() {
+        error = Some("ERROR missing DONE for BOARD".to_string());
+    }
+
+    match error {
+        Some(msg) => msg,
+        None => game.handle_board_done(),
+    }
+}
 
 fn main() {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     let mut lines = stdin.lock().lines();
-    let mut game = crate::game::GameState::new();
+    let mut game = GameState::new();
 
     while let Some(line) = lines.next() {
         match line {
@@ -31,43 +86,8 @@ fn main() {
                         println!("{}", game.handle_begin());
                     }
                     Command::Board => {
-                        if game.handle_board_start() {
-                            for board_line in lines.by_ref() {
-                                match board_line {
-                                    Ok(content) => {
-                                        let content = content.trim();
-                                        if content == "DONE" {
-                                            println!("{}", game.handle_board_done());
-                                            break;
-                                        }
-
-                                        let parts: Vec<&str> = content.split(',').collect();
-                                        if parts.len() == 3 {
-                                            if let (Ok(x), Ok(y), Ok(field)) = (
-                                                parts[0].parse::<usize>(),
-                                                parts[1].parse::<usize>(),
-                                                parts[2].parse::<usize>(),
-                                            ) {
-                                                game.handle_board_move(x, y, field);
-                                            } else {
-                                                eprintln!("Error: Failed to parse integers in board line '{}'", content);
-                                            }
-                                        } else {
-                                            eprintln!(
-                                                "Error: Invalid format for board line '{}'",
-                                                content
-                                            );
-                                        }
-                                    }
-                                    Err(e) => {
-                                        eprintln!("Error reading board line: {}", e);
-                                        break;
-                                    }
-                                }
-                            }
-                        } else {
-                            println!("ERROR game not initialized");
-                        }
+                        let response = handle_board_section(&mut lines, &mut game);
+                        println!("{}", response);
                     }
                     Command::Info(_, _) => {
                         // Ignore INFO commands for now
