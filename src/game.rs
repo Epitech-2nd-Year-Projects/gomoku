@@ -56,7 +56,7 @@ impl GameState {
             self.game_in_progress = false;
         }
 
-        self.make_move()
+        self.generate_move()
     }
 
     pub fn game_over(&self) -> Option<Cell> {
@@ -77,33 +77,49 @@ impl GameState {
             return "ERROR game not initialized".to_string();
         }
         self.game_in_progress = true;
-        self.make_move()
+        self.generate_move()
     }
 
-    pub fn handle_board_start(&mut self) -> bool {
+    pub fn handle_board_start(&mut self) -> Result<(), &'static str> {
         if !self.is_initialized {
-            return false;
+            return Err("ERROR game not initialized");
         }
         self.game_in_progress = true;
         self.board.clear();
-        true
+        Ok(())
     }
 
-    pub fn handle_board_move(&mut self, x: usize, y: usize, field: usize) {
+    pub fn handle_board_move(
+        &mut self,
+        x: usize,
+        y: usize,
+        field: usize,
+    ) -> Result<(), &'static str> {
+        if !self.is_initialized {
+            return Err("ERROR game not initialized");
+        }
+        if x >= self.size || y >= self.size {
+            return Err("ERROR coordinates out of range");
+        }
+
         let cell = match field {
+            0 => Cell::Empty,
             1 => Cell::MyStone,
             2 => Cell::OpStone,
             3 => Cell::Forbidden,
-            _ => Cell::Empty,
+            _ => return Err("ERROR invalid board field"),
         };
-        let _ = self.board.set_cell(x, y, cell);
+
+        self.board
+            .set_cell(x, y, cell)
+            .map_err(|_| "ERROR coordinates out of range")
     }
 
     pub fn handle_board_done(&mut self) -> String {
         if !self.is_initialized {
             return "ERROR game not initialized".to_string();
         }
-        self.make_move()
+        self.generate_move()
     }
 
     pub fn handle_restart(&mut self) -> String {
@@ -115,7 +131,7 @@ impl GameState {
         "OK".to_string()
     }
 
-    fn make_move(&mut self) -> String {
+    fn generate_move(&mut self) -> String {
         // TODO: implement actual AI logic
         let move_coords = if self.validate_move(10, 10).is_ok() {
             Some((10, 10))
@@ -200,9 +216,9 @@ mod tests {
         let mut game = GameState::new();
         game.handle_start(20);
 
-        game.handle_board_start();
-        game.handle_board_move(10, 10, 1);
-        game.handle_board_move(10, 11, 2);
+        assert!(game.handle_board_start().is_ok());
+        game.handle_board_move(10, 10, 1).unwrap();
+        game.handle_board_move(10, 11, 2).unwrap();
 
         assert_eq!(game.board.get_cell(10, 10), Some(Cell::MyStone));
         assert_eq!(game.board.get_cell(10, 11), Some(Cell::OpStone));
@@ -259,7 +275,7 @@ mod tests {
         game.handle_start(20);
 
         for x in 0..4 {
-            game.handle_board_move(x, 0, 2);
+            game.handle_board_move(x, 0, 2).unwrap();
         }
 
         let response = game.handle_turn(4, 0);
