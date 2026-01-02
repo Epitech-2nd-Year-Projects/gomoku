@@ -131,11 +131,7 @@ mod tests {
         let mut game = GameState::new();
         game.handle_start(20);
 
-        let mut lines = vec![
-            Ok("10,10,2".to_string()),
-            Ok("DONE".to_string()),
-        ]
-        .into_iter();
+        let mut lines = vec![Ok("10,10,2".to_string()), Ok("DONE".to_string())].into_iter();
 
         let response = handle_board_section(&mut lines, &mut game);
         assert_eq!(response, "0,0");
@@ -177,8 +173,7 @@ mod tests {
         let mut game = GameState::new();
         game.handle_start(20);
 
-        let mut lines =
-            vec![Err(io::Error::new(io::ErrorKind::Other, "boom"))].into_iter();
+        let mut lines = vec![Err(io::Error::new(io::ErrorKind::Other, "boom"))].into_iter();
         let response = handle_board_section(&mut lines, &mut game);
 
         assert_eq!(response, "ERROR reading board line: boom");

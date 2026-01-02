@@ -232,10 +232,7 @@ mod tests {
     #[test]
     fn test_board_move_errors() {
         let mut game = GameState::new();
-        assert_eq!(
-            game.handle_board_start(),
-            Err("ERROR game not initialized")
-        );
+        assert_eq!(game.handle_board_start(), Err("ERROR game not initialized"));
         assert_eq!(
             game.handle_board_move(0, 0, 1),
             Err("ERROR game not initialized")
