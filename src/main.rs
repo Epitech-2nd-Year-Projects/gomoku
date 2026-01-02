@@ -121,3 +121,66 @@ fn main() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_handle_board_section_success() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        let mut lines = vec![
+            Ok("10,10,2".to_string()),
+            Ok("DONE".to_string()),
+        ]
+        .into_iter();
+
+        let response = handle_board_section(&mut lines, &mut game);
+        assert_eq!(response, "0,0");
+    }
+
+    #[test]
+    fn test_handle_board_section_missing_done() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        let mut lines = vec![Ok("10,10,2".to_string())].into_iter();
+        let response = handle_board_section(&mut lines, &mut game);
+
+        assert_eq!(response, "ERROR missing DONE for BOARD");
+    }
+
+    #[test]
+    fn test_handle_board_section_parse_error() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        let mut lines = vec![Ok("bad".to_string()), Ok("DONE".to_string())].into_iter();
+        let response = handle_board_section(&mut lines, &mut game);
+
+        assert_eq!(response, "ERROR Invalid BOARD line 'bad'");
+    }
+
+    #[test]
+    fn test_handle_board_section_uninitialized() {
+        let mut game = GameState::new();
+        let mut lines = vec![Ok("DONE".to_string())].into_iter();
+        let response = handle_board_section(&mut lines, &mut game);
+
+        assert_eq!(response, "ERROR game not initialized");
+    }
+
+    #[test]
+    fn test_handle_board_section_io_error() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        let mut lines =
+            vec![Err(io::Error::new(io::ErrorKind::Other, "boom"))].into_iter();
+        let response = handle_board_section(&mut lines, &mut game);
+
+        assert_eq!(response, "ERROR reading board line: boom");
+    }
+}
