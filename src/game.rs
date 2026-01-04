@@ -132,7 +132,9 @@ impl GameState {
     }
 
     fn generate_move(&mut self) -> String {
-        let move_coords = self.fallback_move();
+        let move_coords = self
+            .immediate_winning_move()
+            .or_else(|| self.fallback_move());
 
         if let Some((x, y)) = move_coords {
             self.board.set_cell(x, y, Cell::MyStone).unwrap();
@@ -145,6 +147,12 @@ impl GameState {
         }
 
         "ERROR board full".to_string()
+    }
+
+    fn immediate_winning_move(&self) -> Option<(usize, usize)> {
+        self.board
+            .iter_empty()
+            .find(|&(x, y)| self.board.is_winning_move(x, y, Cell::MyStone))
     }
 
     fn fallback_move(&self) -> Option<(usize, usize)> {
@@ -325,6 +333,22 @@ mod tests {
     }
 
     #[test]
+    fn test_immediate_winning_move_preferred() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 0..4 {
+            game.board.set_cell(x, 0, Cell::MyStone).unwrap();
+        }
+
+        let response = game.handle_turn(5, 5);
+
+        assert_eq!(response, "4,0");
+        assert_eq!(game.board.get_cell(4, 0), Some(Cell::MyStone));
+        assert!(!game.game_in_progress);
+    }
+
+    #[test]
     fn test_make_move_win() {
         let mut game = GameState::new();
         game.handle_start(20);
@@ -335,8 +359,12 @@ mod tests {
 
         let response = game.handle_turn(0, 0);
 
-        assert_eq!(response, "10,10");
-        assert_eq!(game.board.get_cell(10, 10), Some(Cell::MyStone));
+        let parts: Vec<&str> = response.split(',').collect();
+        let bot_x: usize = parts[0].parse().unwrap();
+        let bot_y: usize = parts[1].parse().unwrap();
+
+        assert_eq!(game.board.get_cell(bot_x, bot_y), Some(Cell::MyStone));
+        assert!(game.board.check_five_in_a_row(Cell::MyStone));
         assert!(game.game_over().is_some());
         assert!(!game.game_in_progress);
     }
