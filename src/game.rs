@@ -1,3 +1,4 @@
+use crate::ai;
 use crate::board::{Board, Cell};
 
 pub struct GameState {
@@ -132,9 +133,20 @@ impl GameState {
     }
 
     fn generate_move(&mut self) -> String {
-        let move_coords = self.fallback_move();
+        let move_coords = ai::get_move(&self.board, Cell::MyStone, None);
 
         if let Some((x, y)) = move_coords {
+            if let Err(e) = self.validate_move(x, y) {
+                if let Some(fallback) = self.fallback_move() {
+                    self.board.set_cell(fallback.0, fallback.1, Cell::MyStone).unwrap();
+                    if self.game_over().is_some() {
+                        self.game_in_progress = false;
+                    }
+                    return format!("{},{}", fallback.0, fallback.1);
+                }
+                return format!("ERROR {}", e.strip_prefix("ERROR ").unwrap_or(&e));
+            }
+
             self.board.set_cell(x, y, Cell::MyStone).unwrap();
 
             if self.game_over().is_some() {
@@ -335,8 +347,14 @@ mod tests {
 
         let response = game.handle_turn(0, 0);
 
-        assert_eq!(response, "10,10");
-        assert_eq!(game.board.get_cell(10, 10), Some(Cell::MyStone));
+        assert!(!response.contains("ERROR"));
+        let parts: Vec<&str> = response.split(',').collect();
+        let bot_x: usize = parts[0].parse().unwrap();
+        let bot_y: usize = parts[1].parse().unwrap();
+
+        assert_eq!(game.board.get_cell(bot_x, bot_y), Some(Cell::MyStone));
+        assert!(bot_y == 10 && (bot_x == 5 || bot_x == 10),
+                "Le coup doit compléter le 5-en-ligne à y=10 (x=5 ou x=10)");
         assert!(game.game_over().is_some());
         assert!(!game.game_in_progress);
     }
