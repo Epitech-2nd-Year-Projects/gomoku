@@ -354,7 +354,7 @@ mod tests {
 
         assert_eq!(game.board.get_cell(bot_x, bot_y), Some(Cell::MyStone));
         assert!(bot_y == 10 && (bot_x == 5 || bot_x == 10),
-                "Le coup doit compléter le 5-en-ligne à y=10 (x=5 ou x=10)");
+                "Move must complete the 5-in-a-row at y=10 (x=5 or x=10)");
         assert!(game.game_over().is_some());
         assert!(!game.game_in_progress);
     }

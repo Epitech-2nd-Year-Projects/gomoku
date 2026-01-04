@@ -140,8 +140,8 @@ mod tests {
         assert_eq!(parts.len(), 2);
         let x: usize = parts[0].parse().unwrap();
         let y: usize = parts[1].parse().unwrap();
-        assert!(x < 20 && y < 20, "Le coup doit être dans les limites du plateau");
-        assert_ne!((x, y), (10, 10), "Le coup ne doit pas être sur la case déjà occupée");
+        assert!(x < 20 && y < 20, "Move must be within board boundaries");
+        assert_ne!((x, y), (10, 10), "Move must not be on already occupied cell");
     }
 
     #[test]
