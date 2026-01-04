@@ -91,6 +91,10 @@ impl Board {
         self.iter_empty().next().is_none()
     }
 
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
     pub fn check_five_in_a_row(&self, player: Cell) -> bool {
         let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
 
