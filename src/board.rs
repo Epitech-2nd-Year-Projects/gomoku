@@ -140,14 +140,7 @@ impl Board {
         false
     }
 
-    fn count_in_direction(
-        &self,
-        x: usize,
-        y: usize,
-        dx: isize,
-        dy: isize,
-        player: Cell,
-    ) -> usize {
+    fn count_in_direction(&self, x: usize, y: usize, dx: isize, dy: isize, player: Cell) -> usize {
         let mut count = 0;
         let mut nx = x as isize + dx;
         let mut ny = y as isize + dy;
