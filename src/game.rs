@@ -216,6 +216,39 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_move_edge_cases() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert!(game.validate_move(0, 0).is_ok());
+        assert!(game.validate_move(19, 0).is_ok());
+        assert!(game.validate_move(0, 19).is_ok());
+        assert!(game.validate_move(19, 19).is_ok());
+
+        assert!(game.validate_move(19, 19).is_ok());
+        game.board.set_cell(19, 19, Cell::MyStone).unwrap();
+        assert!(game.validate_move(19, 19).is_err());
+        assert_eq!(
+            game.validate_move(19, 19),
+            Err("ERROR cell already occupied")
+        );
+    }
+
+    #[test]
+    fn test_validate_move_bounds() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert!(game.validate_move(19, 19).is_ok());
+        assert!(game.validate_move(19, 0).is_ok());
+        assert!(game.validate_move(0, 19).is_ok());
+
+        assert!(game.validate_move(20, 19).is_err());
+        assert!(game.validate_move(19, 20).is_err());
+        assert!(game.validate_move(20, 20).is_err());
+    }
+
+    #[test]
     fn test_fallback_move_center_then_first_empty() {
         let mut game = GameState::new();
         game.handle_start(20);
