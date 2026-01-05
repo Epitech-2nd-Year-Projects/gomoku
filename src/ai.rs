@@ -1,4 +1,5 @@
 use crate::board::{Board, Cell};
+use std::time::{Duration, Instant};
 
 const SCORE_WIN: i32 = 100_000;
 const SCORE_FOUR_OPEN: i32 = 10_000;
@@ -7,7 +8,8 @@ const SCORE_THREE_OPEN: i32 = 1_000;
 const SCORE_THREE_BLOCKED: i32 = 100;
 const SCORE_TWO_OPEN: i32 = 100;
 const SCORE_TWO_BLOCKED: i32 = 10;
-const MAX_DEPTH: u8 = 4;
+const MAX_DEPTH: u8 = 6;
+const TIME_LIMIT_SECS: u64 = 5;
 
 pub fn find_winning_move(board: &Board, player: Cell) -> Option<(usize, usize)> {
     let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
@@ -346,26 +348,50 @@ pub fn find_best_move_minimax(board: &Board, player: Cell) -> Option<(usize, usi
         return None;
     }
 
-    let mut best_move = None;
-    let mut best_score = i32::MIN;
+    let time_limit = Duration::from_secs(TIME_LIMIT_SECS);
+    let start_time = Instant::now();
+    let mut best_move_so_far = None;
 
-    for &(x, y) in moves.iter().take(15) {
-        board_copy.set_cell(x, y, player).unwrap();
-        let score = minimax(
-            &mut board_copy,
-            MAX_DEPTH - 1,
-            i32::MIN,
-            i32::MAX,
-            false,
-            player,
-        );
-        board_copy.set_cell(x, y, Cell::Empty).unwrap();
+    for depth in 1..=MAX_DEPTH {
+        if start_time.elapsed() >= time_limit {
+            break;
+        }
 
-        if score > best_score {
-            best_score = score;
-            best_move = Some((x, y));
+        let mut current_best_move = None;
+        let mut current_best_score = i32::MIN;
+        let mut timeout = false;
+
+        for &(x, y) in moves.iter().take(15) {
+            if start_time.elapsed() >= time_limit {
+                timeout = true;
+                break;
+            }
+
+            board_copy.set_cell(x, y, player).unwrap();
+            let score = minimax(
+                &mut board_copy,
+                depth - 1,
+                i32::MIN,
+                i32::MAX,
+                false,
+                player,
+            );
+            board_copy.set_cell(x, y, Cell::Empty).unwrap();
+
+            if score > current_best_score {
+                current_best_score = score;
+                current_best_move = Some((x, y));
+            }
+        }
+
+        if timeout {
+            break;
+        }
+
+        if let Some(mv) = current_best_move {
+            best_move_so_far = Some(mv);
         }
     }
 
-    best_move
+    best_move_so_far
 }
