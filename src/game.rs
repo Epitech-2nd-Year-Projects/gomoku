@@ -133,16 +133,25 @@ impl GameState {
     }
 
     fn generate_move(&mut self) -> String {
-        let opponent = Cell::OpStone;
-
-        if let Some(blocking_move) = ai::find_blocking_move(&self.board, opponent) {
-            if self.validate_move(blocking_move.0, blocking_move.1).is_ok() {
-                self.board.set_cell(blocking_move.0, blocking_move.1, Cell::MyStone).unwrap();
-                if self.game_over().is_some() {
-                    self.game_in_progress = false;
+        if let Some(move_coords) = ai::find_best_move_minimax(&self.board, Cell::MyStone) {
+            if let Err(e) = self.validate_move(move_coords.0, move_coords.1) {
+                if let Some(fallback) = self.fallback_move() {
+                    self.board.set_cell(fallback.0, fallback.1, Cell::MyStone).unwrap();
+                    if self.game_over().is_some() {
+                        self.game_in_progress = false;
+                    }
+                    return format!("{},{}", fallback.0, fallback.1);
                 }
-                return format!("{},{}", blocking_move.0, blocking_move.1);
+                return format!("ERROR {}", e.strip_prefix("ERROR ").unwrap_or(&e));
             }
+
+            self.board.set_cell(move_coords.0, move_coords.1, Cell::MyStone).unwrap();
+
+            if self.game_over().is_some() {
+                self.game_in_progress = false;
+            }
+
+            return format!("{},{}", move_coords.0, move_coords.1);
         }
 
         let move_coords = self.fallback_move();
