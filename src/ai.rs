@@ -205,6 +205,53 @@ pub fn evaluate(board: &Board, player: Cell) -> i32 {
     score
 }
 
+pub fn generate_moves(board: &Board) -> Vec<(usize, usize)> {
+    let size = board.size();
+    let center = size / 2;
+    let mut moves = Vec::new();
+    let mut prioritized = Vec::new();
+
+    for y in 0..size {
+        for x in 0..size {
+            if !board.is_empty(x, y) {
+                continue;
+            }
+
+            let distance_to_center = ((x as isize - center as isize).abs()
+                + (y as isize - center as isize).abs()) as usize;
+
+            let near_stone = (0..size)
+                .flat_map(|dy| (0..size).map(move |dx| (dx, dy)))
+                .filter(|&(nx, ny)| {
+                    if nx == x && ny == y {
+                        return false;
+                    }
+                    if board.get_cell(nx, ny) == Some(Cell::Empty) {
+                        return false;
+                    }
+                    let dx = (nx as isize - x as isize).abs();
+                    let dy = (ny as isize - y as isize).abs();
+                    dx <= 2 && dy <= 2 && (dx > 0 || dy > 0)
+                })
+                .next()
+                .is_some();
+
+            if distance_to_center <= 3 || near_stone {
+                prioritized.push((distance_to_center, x, y));
+            } else {
+                moves.push((x, y));
+            }
+        }
+    }
+
+    prioritized.sort_by_key(|&(dist, _, _)| dist);
+    prioritized
+        .into_iter()
+        .map(|(_, x, y)| (x, y))
+        .chain(moves.into_iter())
+        .collect()
+}
+
 fn minimax(
     board: &mut Board,
     depth: u8,
@@ -234,7 +281,7 @@ fn minimax(
     }
 
     let current_player = if maximizing { player } else { opponent };
-    let moves: Vec<(usize, usize)> = board.iter_empty().collect();
+    let moves = generate_moves(board);
 
     if moves.is_empty() {
         return evaluate(board, player);
@@ -293,7 +340,7 @@ pub fn find_best_move_minimax(board: &Board, player: Cell) -> Option<(usize, usi
         return Some(move_pos);
     }
 
-    let moves: Vec<(usize, usize)> = board_copy.iter_empty().collect();
+    let moves = generate_moves(&board_copy);
 
     if moves.is_empty() {
         return None;
