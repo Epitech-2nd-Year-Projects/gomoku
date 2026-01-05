@@ -238,4 +238,166 @@ mod tests {
         let board = Board::default();
         assert!(!board.is_full());
     }
+
+    #[test]
+    fn test_indexing_edge_cases() {
+        let board = Board::default();
+        assert_eq!(board.get_index(0, 19), Some(380));
+        assert_eq!(board.get_index(19, 0), Some(19));
+        assert_eq!(board.get_index(19, 19), Some(399));
+        assert_eq!(board.get_index(19, 1), Some(39));
+        assert_eq!(board.get_index(1, 19), Some(381));
+    }
+
+    #[test]
+    fn test_indexing_bounds() {
+        let board = Board::default();
+        assert_eq!(board.get_index(19, 19), Some(399));
+        assert_eq!(board.get_index(20, 19), None);
+        assert_eq!(board.get_index(19, 20), None);
+        assert_eq!(board.get_index(20, 20), None);
+    }
+
+    #[test]
+    fn test_cell_operations_edge_cases() {
+        let mut board = Board::default();
+        assert!(board.set_cell(0, 19, Cell::MyStone).is_ok());
+        assert_eq!(board.get_cell(0, 19), Some(Cell::MyStone));
+
+        assert!(board.set_cell(19, 0, Cell::OpStone).is_ok());
+        assert_eq!(board.get_cell(19, 0), Some(Cell::OpStone));
+
+        assert!(board.set_cell(19, 19, Cell::MyStone).is_ok());
+        assert_eq!(board.get_cell(19, 19), Some(Cell::MyStone));
+
+        assert!(board.set_cell(19, 19, Cell::OpStone).is_ok());
+        assert_eq!(board.get_cell(19, 19), Some(Cell::OpStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_horizontal_edge() {
+        let mut board = Board::default();
+        for x in 15..20 {
+            board.set_cell(x, 19, Cell::MyStone).unwrap();
+        }
+        assert!(board.check_five_in_a_row(Cell::MyStone));
+        assert!(!board.check_five_in_a_row(Cell::OpStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_vertical_edge() {
+        let mut board = Board::default();
+        for y in 15..20 {
+            board.set_cell(19, y, Cell::OpStone).unwrap();
+        }
+        assert!(board.check_five_in_a_row(Cell::OpStone));
+        assert!(!board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_diagonal_edge() {
+        let mut board = Board::default();
+        for i in 15..20 {
+            board.set_cell(i, i, Cell::MyStone).unwrap();
+        }
+        assert!(board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_anti_diagonal_edge() {
+        let mut board = Board::default();
+        for i in 0..5 {
+            board.set_cell(19 - i, i, Cell::MyStone).unwrap();
+        }
+        assert!(board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_no_false_positive_four() {
+        let mut board = Board::default();
+        for x in 0..4 {
+            board.set_cell(x, 0, Cell::MyStone).unwrap();
+        }
+        assert!(!board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_no_false_positive_six() {
+        let mut board = Board::default();
+        for x in 0..6 {
+            board.set_cell(x, 0, Cell::MyStone).unwrap();
+        }
+        assert!(board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_no_false_positive_scattered() {
+        let mut board = Board::default();
+        board.set_cell(0, 0, Cell::MyStone).unwrap();
+        board.set_cell(2, 0, Cell::MyStone).unwrap();
+        board.set_cell(4, 0, Cell::MyStone).unwrap();
+        board.set_cell(6, 0, Cell::MyStone).unwrap();
+        board.set_cell(8, 0, Cell::MyStone).unwrap();
+        assert!(!board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_multiple_wins_horizontal_vertical() {
+        let mut board = Board::default();
+        for x in 0..5 {
+            board.set_cell(x, 0, Cell::MyStone).unwrap();
+        }
+        for y in 0..5 {
+            board.set_cell(0, y, Cell::MyStone).unwrap();
+        }
+        assert!(board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_multiple_wins_diagonal() {
+        let mut board = Board::default();
+        for i in 0..5 {
+            board.set_cell(i, i, Cell::MyStone).unwrap();
+        }
+        for i in 0..5 {
+            board.set_cell(i, 4 - i, Cell::MyStone).unwrap();
+        }
+        assert!(board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_edge_bottom_right() {
+        let mut board = Board::default();
+        for i in 15..20 {
+            board.set_cell(i, 19, Cell::MyStone).unwrap();
+        }
+        assert!(board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_edge_bottom_left() {
+        let mut board = Board::default();
+        for i in 0..5 {
+            board.set_cell(i, 19, Cell::MyStone).unwrap();
+        }
+        assert!(board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_edge_top_right() {
+        let mut board = Board::default();
+        for i in 15..20 {
+            board.set_cell(i, 0, Cell::MyStone).unwrap();
+        }
+        assert!(board.check_five_in_a_row(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_check_five_in_a_row_no_false_positive_edge() {
+        let mut board = Board::default();
+        for x in 15..19 {
+            board.set_cell(x, 19, Cell::MyStone).unwrap();
+        }
+        assert!(!board.check_five_in_a_row(Cell::MyStone));
+    }
 }
