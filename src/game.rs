@@ -401,4 +401,161 @@ mod tests {
         assert!(game.game_over().is_some());
         assert!(!game.game_in_progress);
     }
+
+    #[test]
+    fn test_must_play_winning_move_horizontal() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert!(game.handle_board_start().is_ok());
+        for x in 0..4 {
+            game.handle_board_move(x, 10, 1).unwrap();
+        }
+
+        let response = game.handle_board_done();
+        assert!(!response.contains("ERROR"));
+        let parts: Vec<&str> = response.split(',').collect();
+        let bot_x: usize = parts[0].parse().unwrap();
+        let bot_y: usize = parts[1].parse().unwrap();
+
+        assert_eq!(bot_y, 10);
+        assert!(bot_x == 4 || bot_x == 0,
+                "Move must complete the 5-in-a-row at y=10");
+        assert_eq!(game.board.get_cell(bot_x, bot_y), Some(Cell::MyStone));
+        assert!(game.game_over().is_some());
+    }
+
+    #[test]
+    fn test_must_play_winning_move_vertical() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert!(game.handle_board_start().is_ok());
+        for y in 0..4 {
+            game.handle_board_move(10, y, 1).unwrap();
+        }
+
+        let response = game.handle_board_done();
+        assert!(!response.contains("ERROR"));
+        let parts: Vec<&str> = response.split(',').collect();
+        let bot_x: usize = parts[0].parse().unwrap();
+        let bot_y: usize = parts[1].parse().unwrap();
+
+        assert_eq!(bot_x, 10);
+        assert!(bot_y == 4 || bot_y == 0,
+                "Move must complete the 5-in-a-row at x=10");
+        assert_eq!(game.board.get_cell(bot_x, bot_y), Some(Cell::MyStone));
+        assert!(game.game_over().is_some());
+    }
+
+    #[test]
+    fn test_must_play_winning_move_diagonal() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert!(game.handle_board_start().is_ok());
+        for i in 0..4 {
+            game.handle_board_move(i, i, 1).unwrap();
+        }
+
+        let response = game.handle_board_done();
+        assert!(!response.contains("ERROR"));
+        let parts: Vec<&str> = response.split(',').collect();
+        let bot_x: usize = parts[0].parse().unwrap();
+        let bot_y: usize = parts[1].parse().unwrap();
+
+        assert_eq!(bot_x, bot_y);
+        assert!(bot_x == 4 || bot_x == 0,
+                "Move must complete the 5-in-a-row diagonal");
+        assert_eq!(game.board.get_cell(bot_x, bot_y), Some(Cell::MyStone));
+        assert!(game.game_over().is_some());
+    }
+
+    #[test]
+    fn test_must_block_opponent_horizontal() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert!(game.handle_board_start().is_ok());
+        for x in 0..4 {
+            game.handle_board_move(x, 10, 2).unwrap();
+        }
+
+        let response = game.handle_board_done();
+        assert!(!response.contains("ERROR"));
+        let parts: Vec<&str> = response.split(',').collect();
+        let bot_x: usize = parts[0].parse().unwrap();
+        let bot_y: usize = parts[1].parse().unwrap();
+
+        assert_eq!(bot_y, 10);
+        assert!(bot_x == 4 || bot_x == 0,
+                "Move must block opponent at y=10");
+        assert_eq!(game.board.get_cell(bot_x, bot_y), Some(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_must_block_opponent_vertical() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert!(game.handle_board_start().is_ok());
+        for y in 0..4 {
+            game.handle_board_move(10, y, 2).unwrap();
+        }
+
+        let response = game.handle_board_done();
+        assert!(!response.contains("ERROR"));
+        let parts: Vec<&str> = response.split(',').collect();
+        let bot_x: usize = parts[0].parse().unwrap();
+        let bot_y: usize = parts[1].parse().unwrap();
+
+        assert_eq!(bot_x, 10);
+        assert!(bot_y == 4 || bot_y == 0,
+                "Move must block opponent at x=10");
+        assert_eq!(game.board.get_cell(bot_x, bot_y), Some(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_must_block_opponent_diagonal() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert!(game.handle_board_start().is_ok());
+        for i in 0..4 {
+            game.handle_board_move(i, i, 2).unwrap();
+        }
+
+        let response = game.handle_board_done();
+        assert!(!response.contains("ERROR"));
+        let parts: Vec<&str> = response.split(',').collect();
+        let bot_x: usize = parts[0].parse().unwrap();
+        let bot_y: usize = parts[1].parse().unwrap();
+
+        assert_eq!(bot_x, bot_y);
+        assert!(bot_x == 4 || bot_x == 0,
+                "Move must block opponent diagonal");
+        assert_eq!(game.board.get_cell(bot_x, bot_y), Some(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_must_block_opponent_anti_diagonal() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert!(game.handle_board_start().is_ok());
+        for i in 0..4 {
+            game.handle_board_move(i, 4 - i, 2).unwrap();
+        }
+
+        let response = game.handle_board_done();
+        assert!(!response.contains("ERROR"));
+        let parts: Vec<&str> = response.split(',').collect();
+        let bot_x: usize = parts[0].parse().unwrap();
+        let bot_y: usize = parts[1].parse().unwrap();
+
+        assert_eq!(bot_x + bot_y, 4);
+        assert!(bot_x == 4 || bot_x == 0,
+                "Move must block opponent anti-diagonal");
+        assert_eq!(game.board.get_cell(bot_x, bot_y), Some(Cell::MyStone));
+    }
 }
