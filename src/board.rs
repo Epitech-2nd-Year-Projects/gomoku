@@ -91,19 +91,8 @@ impl Board {
         self.iter_empty().next().is_none()
     }
 
-    pub fn is_winning_move(&self, x: usize, y: usize, player: Cell) -> bool {
-        if self.get_cell(x, y) != Some(Cell::Empty) {
-            return false;
-        }
-
-        let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
-
-        directions.iter().any(|&(dx, dy)| {
-            let count = 1
-                + self.count_in_direction(x, y, dx, dy, player)
-                + self.count_in_direction(x, y, -dx, -dy, player);
-            count >= 5
-        })
+    pub fn size(&self) -> usize {
+        self.size
     }
 
     pub fn check_five_in_a_row(&self, player: Cell) -> bool {
@@ -138,25 +127,6 @@ impl Board {
             }
         }
         false
-    }
-
-    fn count_in_direction(&self, x: usize, y: usize, dx: isize, dy: isize, player: Cell) -> usize {
-        let mut count = 0;
-        let mut nx = x as isize + dx;
-        let mut ny = y as isize + dy;
-        let size = self.size as isize;
-
-        while nx >= 0 && ny >= 0 && nx < size && ny < size {
-            if self.get_cell(nx as usize, ny as usize) == Some(player) {
-                count += 1;
-                nx += dx;
-                ny += dy;
-            } else {
-                break;
-            }
-        }
-
-        count
     }
 }
 
@@ -261,18 +231,6 @@ mod tests {
         }
         board.set_cell(5, 0, Cell::MyStone).unwrap();
         assert!(!board.check_five_in_a_row(Cell::MyStone));
-    }
-
-    #[test]
-    fn test_is_winning_move_horizontal() {
-        let mut board = Board::default();
-        for x in 0..4 {
-            board.set_cell(x, 0, Cell::MyStone).unwrap();
-        }
-
-        assert!(board.is_winning_move(4, 0, Cell::MyStone));
-        assert!(!board.is_winning_move(5, 0, Cell::MyStone));
-        assert!(!board.is_winning_move(0, 0, Cell::MyStone));
     }
 
     #[test]
