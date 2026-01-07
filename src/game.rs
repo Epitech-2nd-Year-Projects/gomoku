@@ -137,9 +137,7 @@ impl GameState {
 
         if let Some(blocking_move) = ai::find_blocking_move(&self.board, opponent) {
             if self.validate_move(blocking_move.0, blocking_move.1).is_ok() {
-                self.board
-                    .set_cell(blocking_move.0, blocking_move.1, Cell::MyStone)
-                    .unwrap();
+                self.board.set_cell(blocking_move.0, blocking_move.1, Cell::MyStone).unwrap();
                 if self.game_over().is_some() {
                     self.game_in_progress = false;
                 }
@@ -356,10 +354,8 @@ mod tests {
         let bot_y: usize = parts[1].parse().unwrap();
 
         assert_eq!(game.board.get_cell(bot_x, bot_y), Some(Cell::MyStone));
-        assert!(
-            bot_y == 10 && (bot_x == 5 || bot_x == 10),
-            "Move must complete the 5-in-a-row at y=10 (x=5 or x=10)"
-        );
+        assert!(bot_y == 10 && (bot_x == 5 || bot_x == 10),
+                "Move must complete the 5-in-a-row at y=10 (x=5 or x=10)");
         assert!(game.game_over().is_some());
         assert!(!game.game_in_progress);
     }
