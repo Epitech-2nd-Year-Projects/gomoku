@@ -72,13 +72,7 @@ fn test_multiple_turns() {
 
 #[test]
 fn test_board_prefilled_sequence() {
-    let responses = run_commands(&[
-        "START 20",
-        "BOARD",
-        "10,10,1",
-        "10,11,2",
-        "DONE",
-    ]);
+    let responses = run_commands(&["START 20", "BOARD", "10,10,1", "10,11,2", "DONE"]);
     assert_eq!(responses.len(), 2);
     assert_eq!(responses[0], "OK");
     assert!(is_valid_move(&responses[1]));
@@ -90,13 +84,7 @@ fn test_board_prefilled_sequence() {
 
 #[test]
 fn test_board_then_turn() {
-    let responses = run_commands(&[
-        "START 20",
-        "BOARD",
-        "5,5,1",
-        "DONE",
-        "TURN 0,0",
-    ]);
+    let responses = run_commands(&["START 20", "BOARD", "5,5,1", "DONE", "TURN 0,0"]);
     assert_eq!(responses.len(), 3);
     assert_eq!(responses[0], "OK");
     assert!(is_valid_move(&responses[1]));
@@ -127,4 +115,3 @@ fn test_restart_sequence() {
     assert_eq!(responses[2], "OK");
     assert!(is_valid_move(&responses[3]));
 }
-
