@@ -11,7 +11,7 @@ pub(crate) fn is_debug_enabled() -> bool {
 #[macro_export]
 macro_rules! debug {
     ($($arg:tt)*) => {
-        if crate::debug::is_debug_enabled() {
+        if $crate::debug::is_debug_enabled() {
             eprintln!("[DEBUG] {}", format!($($arg)*));
         }
     };
