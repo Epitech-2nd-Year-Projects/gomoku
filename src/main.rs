@@ -1,3 +1,4 @@
+mod ai;
 mod board;
 mod game;
 mod protocol;
@@ -134,7 +135,13 @@ mod tests {
         let mut lines = vec![Ok("10,10,2".to_string()), Ok("DONE".to_string())].into_iter();
 
         let response = handle_board_section(&mut lines, &mut game);
-        assert_eq!(response, "0,0");
+        assert!(!response.contains("ERROR"));
+        let parts: Vec<&str> = response.split(',').collect();
+        assert_eq!(parts.len(), 2);
+        let x: usize = parts[0].parse().unwrap();
+        let y: usize = parts[1].parse().unwrap();
+        assert!(x < 20 && y < 20, "Move must be within board boundaries");
+        assert_ne!((x, y), (10, 10), "Move must not be on already occupied cell");
     }
 
     #[test]
