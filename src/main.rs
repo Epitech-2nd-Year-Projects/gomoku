@@ -141,11 +141,7 @@ mod tests {
         let x: usize = parts[0].parse().unwrap();
         let y: usize = parts[1].parse().unwrap();
         assert!(x < 20 && y < 20, "Move must be within board boundaries");
-        assert_ne!(
-            (x, y),
-            (10, 10),
-            "Move must not be on already occupied cell"
-        );
+        assert_ne!((x, y), (10, 10), "Move must not be on already occupied cell");
     }
 
     #[test]
