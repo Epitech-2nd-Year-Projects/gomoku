@@ -131,8 +131,31 @@ impl GameState {
         "OK".to_string()
     }
 
+    fn find_immediate_win(&mut self, player: Cell) -> Option<(usize, usize)> {
+        let empty_cells: Vec<(usize, usize)> = self.board.iter_empty().collect();
+
+        for (x, y) in empty_cells {
+            self.board
+                .set_cell(x, y, player)
+                .expect("board indices from iter_empty");
+            let is_win = self.board.check_five_in_a_row(player);
+            self.board
+                .set_cell(x, y, Cell::Empty)
+                .expect("board indices from iter_empty");
+
+            if is_win {
+                return Some((x, y));
+            }
+        }
+
+        None
+    }
+
     fn generate_move(&mut self) -> String {
-        let move_coords = self.fallback_move();
+        let move_coords = self
+            .find_immediate_win(Cell::MyStone)
+            .or_else(|| self.find_immediate_win(Cell::OpStone))
+            .or_else(|| self.fallback_move());
 
         if let Some((x, y)) = move_coords {
             self.board.set_cell(x, y, Cell::MyStone).unwrap();
@@ -335,9 +358,29 @@ mod tests {
 
         let response = game.handle_turn(0, 0);
 
-        assert_eq!(response, "10,10");
-        assert_eq!(game.board.get_cell(10, 10), Some(Cell::MyStone));
-        assert!(game.game_over().is_some());
+        let parts: Vec<&str> = response.split(',').collect();
+        let bot_x: usize = parts[0].parse().unwrap();
+        let bot_y: usize = parts[1].parse().unwrap();
+
+        assert_eq!(game.board.get_cell(bot_x, bot_y), Some(Cell::MyStone));
+        assert_eq!(game.game_over(), Some(Cell::MyStone));
         assert!(!game.game_in_progress);
+    }
+
+    #[test]
+    fn test_block_opponent_immediate_win() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 0..3 {
+            game.board.set_cell(x, 5, Cell::OpStone).unwrap();
+        }
+
+        let response = game.handle_turn(3, 5);
+
+        assert_eq!(response, "4,5");
+        assert_eq!(game.board.get_cell(4, 5), Some(Cell::MyStone));
+        assert_eq!(game.game_over(), None);
+        assert!(game.game_in_progress);
     }
 }
