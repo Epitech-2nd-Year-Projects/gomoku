@@ -1,4 +1,5 @@
 mod board;
+mod debug;
 mod game;
 mod protocol;
 
@@ -75,18 +76,26 @@ fn main() {
                 }
 
                 let command = parse_line(input);
+                crate::debug!("Received command: {:?}", command);
                 match command {
                     Command::Start(size) => {
+                        crate::debug!("Starting game with size: {}", size);
                         println!("{}", game.handle_start(size));
                     }
                     Command::Turn(x, y) => {
-                        println!("{}", game.handle_turn(x, y));
+                        crate::debug!("Opponent played: {},{}", x, y);
+                        let response = game.handle_turn(x, y);
+                        crate::debug!("Bot response: {}", response);
+                        println!("{}", response);
                     }
                     Command::Begin => {
+                        crate::debug!("Begin command received");
                         println!("{}", game.handle_begin());
                     }
                     Command::Board => {
+                        crate::debug!("Board command received");
                         let response = handle_board_section(&mut lines, &mut game);
+                        crate::debug!("Bot response to board: {}", response);
                         println!("{}", response);
                     }
                     Command::Info(_, _) => {
@@ -96,15 +105,19 @@ fn main() {
                         println!("name=\"pbrain-brainrot\", version=\"1.0.0\", author=\"Brainrot\", country=\"FR\"");
                     }
                     Command::Restart => {
+                        crate::debug!("Restart command received");
                         println!("{}", game.handle_restart());
                     }
                     Command::End => {
+                        crate::debug!("End command received, exiting");
                         break;
                     }
                     Command::Error(msg) => {
+                        crate::debug!("Error command: {}", msg);
                         println!("ERROR {}", msg);
                     }
                     Command::Unknown(msg) => {
+                        crate::debug!("Unknown command: {}", msg);
                         println!("UNKNOWN {}", msg);
                     }
                 }
