@@ -1,11 +1,13 @@
 use crate::board::{Board, Cell};
 
+const SCORE_WIN: i32 = 100_000;
 const SCORE_FOUR_OPEN: i32 = 10_000;
 const SCORE_FOUR_BLOCKED: i32 = 1_000;
 const SCORE_THREE_OPEN: i32 = 1_000;
 const SCORE_THREE_BLOCKED: i32 = 100;
 const SCORE_TWO_OPEN: i32 = 100;
 const SCORE_TWO_BLOCKED: i32 = 10;
+const MAX_DEPTH: u8 = 4;
 
 pub fn find_winning_move(board: &Board, player: Cell) -> Option<(usize, usize)> {
     let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
@@ -176,10 +178,10 @@ pub fn evaluate(board: &Board, player: Cell) -> i32 {
     };
 
     if board.check_five_in_a_row(player) {
-        return 100_000;
+        return SCORE_WIN;
     }
     if board.check_five_in_a_row(opponent) {
-        return -100_000;
+        return -SCORE_WIN;
     }
 
     let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
@@ -201,4 +203,122 @@ pub fn evaluate(board: &Board, player: Cell) -> i32 {
     }
 
     score
+}
+
+fn minimax(
+    board: &mut Board,
+    depth: u8,
+    alpha: i32,
+    beta: i32,
+    maximizing: bool,
+    player: Cell,
+) -> i32 {
+    if depth == 0 {
+        return evaluate(board, player);
+    }
+
+    let opponent = match player {
+        Cell::MyStone => Cell::OpStone,
+        Cell::OpStone => Cell::MyStone,
+        _ => return 0,
+    };
+
+    if board.check_five_in_a_row(player) {
+        return SCORE_WIN + depth as i32;
+    }
+    if board.check_five_in_a_row(opponent) {
+        return -SCORE_WIN - depth as i32;
+    }
+    if board.is_full() {
+        return 0;
+    }
+
+    let current_player = if maximizing { player } else { opponent };
+    let moves: Vec<(usize, usize)> = board.iter_empty().collect();
+
+    if moves.is_empty() {
+        return evaluate(board, player);
+    }
+
+    let mut alpha = alpha;
+    let mut beta = beta;
+
+    if maximizing {
+        let mut max_eval = i32::MIN;
+
+        for &(x, y) in moves.iter() {
+            board.set_cell(x, y, current_player).unwrap();
+            let eval = minimax(board, depth - 1, alpha, beta, false, player);
+            board.set_cell(x, y, Cell::Empty).unwrap();
+
+            max_eval = max_eval.max(eval);
+            alpha = alpha.max(eval);
+            if beta <= alpha {
+                break;
+            }
+        }
+
+        max_eval
+    } else {
+        let mut min_eval = i32::MAX;
+
+        for &(x, y) in moves.iter() {
+            board.set_cell(x, y, current_player).unwrap();
+            let eval = minimax(board, depth - 1, alpha, beta, true, player);
+            board.set_cell(x, y, Cell::Empty).unwrap();
+
+            min_eval = min_eval.min(eval);
+            beta = beta.min(eval);
+            if beta <= alpha {
+                break;
+            }
+        }
+
+        min_eval
+    }
+}
+
+pub fn find_best_move_minimax(board: &Board, player: Cell) -> Option<(usize, usize)> {
+    let mut board_copy = *board;
+
+    if let Some(move_pos) = find_winning_move(&board_copy, player) {
+        return Some(move_pos);
+    }
+
+    if let Some(move_pos) = find_blocking_move(&board_copy, match player {
+        Cell::MyStone => Cell::OpStone,
+        Cell::OpStone => Cell::MyStone,
+        _ => return None,
+    }) {
+        return Some(move_pos);
+    }
+
+    let moves: Vec<(usize, usize)> = board_copy.iter_empty().collect();
+
+    if moves.is_empty() {
+        return None;
+    }
+
+    let mut best_move = None;
+    let mut best_score = i32::MIN;
+
+    for &(x, y) in moves.iter().take(15) {
+        board_copy.set_cell(x, y, player).unwrap();
+        let score = minimax(
+            &mut board_copy,
+            MAX_DEPTH - 1,
+            i32::MIN,
+            i32::MAX,
+            false,
+            player,
+        );
+        board_copy.set_cell(x, y, Cell::Empty).unwrap();
+
+        if score > best_score {
+            best_score = score;
+            best_move = Some((x, y));
+        }
+    }
+
+    best_move
 }
