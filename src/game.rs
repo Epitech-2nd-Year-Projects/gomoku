@@ -383,4 +383,26 @@ mod tests {
         assert_eq!(game.game_over(), None);
         assert!(game.game_in_progress);
     }
+
+    #[test]
+    fn test_prioritize_win_over_block() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 6..10 {
+            game.board.set_cell(x, 10, Cell::MyStone).unwrap();
+        }
+        game.board.set_cell(5, 10, Cell::OpStone).unwrap();
+
+        for x in 0..4 {
+            game.board.set_cell(x, 5, Cell::OpStone).unwrap();
+        }
+
+        let response = game.handle_turn(15, 15);
+
+        assert_eq!(response, "10,10");
+        assert_eq!(game.board.get_cell(10, 10), Some(Cell::MyStone));
+        assert_eq!(game.game_over(), Some(Cell::MyStone));
+        assert!(!game.game_in_progress);
+    }
 }
