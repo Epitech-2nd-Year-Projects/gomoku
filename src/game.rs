@@ -366,11 +366,7 @@ impl GameState {
 
         let mut nx = x as isize + dx;
         let mut ny = y as isize + dy;
-        while nx >= 0
-            && ny >= 0
-            && nx < self.size as isize
-            && ny < self.size as isize
-        {
+        while nx >= 0 && ny >= 0 && nx < self.size as isize && ny < self.size as isize {
             if self.board.get_cell(nx as usize, ny as usize) == Some(player) {
                 forward_count += 1;
                 nx += dx;
@@ -388,11 +384,7 @@ impl GameState {
 
         nx = x as isize - dx;
         ny = y as isize - dy;
-        while nx >= 0
-            && ny >= 0
-            && nx < self.size as isize
-            && ny < self.size as isize
-        {
+        while nx >= 0 && ny >= 0 && nx < self.size as isize && ny < self.size as isize {
             if self.board.get_cell(nx as usize, ny as usize) == Some(player) {
                 backward_count += 1;
                 nx -= dx;
@@ -456,11 +448,7 @@ impl GameState {
 
                         let mut nx = x as isize;
                         let mut ny = y as isize;
-                        while nx >= 0
-                            && ny >= 0
-                            && nx < self.size as isize
-                            && ny < self.size as isize
-                        {
+                        while nx >= 0 && ny >= 0 && nx < self.size as isize && ny < self.size as isize {
                             if self.board.get_cell(nx as usize, ny as usize) != Some(player) {
                                 break;
                             }
@@ -471,11 +459,7 @@ impl GameState {
 
                         nx = x as isize - dx;
                         ny = y as isize - dy;
-                        while nx >= 0
-                            && ny >= 0
-                            && nx < self.size as isize
-                            && ny < self.size as isize
-                        {
+                        while nx >= 0 && ny >= 0 && nx < self.size as isize && ny < self.size as isize {
                             if self.board.get_cell(nx as usize, ny as usize) != Some(player) {
                                 break;
                             }
