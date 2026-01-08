@@ -360,14 +360,7 @@ impl GameState {
             .find(|&(x, y)| self.validate_move(x, y).is_ok())
     }
 
-    fn evaluate_sequence(
-        &self,
-        x: usize,
-        y: usize,
-        dx: isize,
-        dy: isize,
-        player: Cell,
-    ) -> i32 {
+    fn evaluate_sequence(&self, x: usize, y: usize, dx: isize, dy: isize, player: Cell) -> i32 {
         let mut forward_count = 0;
         let mut backward_count = 0;
 
