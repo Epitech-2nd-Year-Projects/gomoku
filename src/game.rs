@@ -4,11 +4,17 @@ const CANDIDATE_RADIUS: isize = 2;
 const CANDIDATE_CAP: usize = 80;
 const CENTER_CELLS: [(usize, usize); 4] = [(10, 10), (9, 9), (9, 10), (10, 9)];
 
+#[allow(dead_code)]
 const SCORE_OPEN_FOUR: i32 = 10000;
+#[allow(dead_code)]
 const SCORE_CLOSED_FOUR: i32 = 1000;
+#[allow(dead_code)]
 const SCORE_OPEN_THREE: i32 = 500;
+#[allow(dead_code)]
 const SCORE_CLOSED_THREE: i32 = 100;
+#[allow(dead_code)]
 const SCORE_OPEN_TWO: i32 = 10;
+#[allow(dead_code)]
 const SCORE_CLOSED_TWO: i32 = 1;
 
 pub struct GameState {
@@ -360,6 +366,7 @@ impl GameState {
             .find(|&(x, y)| self.validate_move(x, y).is_ok())
     }
 
+    #[allow(dead_code)]
     fn evaluate_sequence(&self, x: usize, y: usize, dx: isize, dy: isize, player: Cell) -> i32 {
         let mut forward_count = 0;
         let mut backward_count = 0;
@@ -426,6 +433,7 @@ impl GameState {
         }
     }
 
+    #[allow(dead_code)]
     fn evaluate(&self, player: Cell) -> i32 {
         let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
         let mut score = 0;
