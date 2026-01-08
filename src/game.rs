@@ -4,6 +4,13 @@ const CANDIDATE_RADIUS: isize = 2;
 const CANDIDATE_CAP: usize = 80;
 const CENTER_CELLS: [(usize, usize); 4] = [(10, 10), (9, 9), (9, 10), (10, 9)];
 
+const SCORE_OPEN_FOUR: i32 = 10000;
+const SCORE_CLOSED_FOUR: i32 = 1000;
+const SCORE_OPEN_THREE: i32 = 500;
+const SCORE_CLOSED_THREE: i32 = 100;
+const SCORE_OPEN_TWO: i32 = 10;
+const SCORE_CLOSED_TWO: i32 = 1;
+
 pub struct GameState {
     size: usize,
     is_initialized: bool,
@@ -352,6 +359,122 @@ impl GameState {
             .iter_empty()
             .find(|&(x, y)| self.validate_move(x, y).is_ok())
     }
+
+    fn evaluate_sequence(
+        &self,
+        x: usize,
+        y: usize,
+        dx: isize,
+        dy: isize,
+        player: Cell,
+    ) -> i32 {
+        let mut forward_count = 0;
+        let mut backward_count = 0;
+
+        let mut nx = x as isize + dx;
+        let mut ny = y as isize + dy;
+        while nx >= 0 && ny >= 0 && nx < self.size as isize && ny < self.size as isize {
+            if self.board.get_cell(nx as usize, ny as usize) == Some(player) {
+                forward_count += 1;
+                nx += dx;
+                ny += dy;
+            } else {
+                break;
+            }
+        }
+
+        let forward_open = nx >= 0 && ny >= 0 && nx < self.size as isize && ny < self.size as isize
+            && self.board.get_cell(nx as usize, ny as usize) == Some(Cell::Empty);
+
+        nx = x as isize - dx;
+        ny = y as isize - dy;
+        while nx >= 0 && ny >= 0 && nx < self.size as isize && ny < self.size as isize {
+            if self.board.get_cell(nx as usize, ny as usize) == Some(player) {
+                backward_count += 1;
+                nx -= dx;
+                ny -= dy;
+            } else {
+                break;
+            }
+        }
+
+        let backward_open = nx >= 0 && ny >= 0 && nx < self.size as isize && ny < self.size as isize
+            && self.board.get_cell(nx as usize, ny as usize) == Some(Cell::Empty);
+
+        let total_count = forward_count + backward_count + 1;
+        let open_sides = if forward_open { 1 } else { 0 } + if backward_open { 1 } else { 0 };
+
+        if total_count >= 4 {
+            if open_sides == 2 {
+                SCORE_OPEN_FOUR
+            } else {
+                SCORE_CLOSED_FOUR
+            }
+        } else if total_count == 3 {
+            if open_sides == 2 {
+                SCORE_OPEN_THREE
+            } else {
+                SCORE_CLOSED_THREE
+            }
+        } else if total_count == 2 {
+            if open_sides == 2 {
+                SCORE_OPEN_TWO
+            } else {
+                SCORE_CLOSED_TWO
+            }
+        } else {
+            0
+        }
+    }
+
+    fn evaluate(&self, player: Cell) -> i32 {
+        let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
+        let mut score = 0;
+        let mut processed = [[[false; 20]; 20]; 4];
+
+        for y in 0..self.size {
+            for x in 0..self.size {
+                if self.board.get_cell(x, y) != Some(player) {
+                    continue;
+                }
+
+                for (dir_idx, &(dx, dy)) in directions.iter().enumerate() {
+                    if processed[dir_idx][y][x] {
+                        continue;
+                    }
+
+                    let pattern_score = self.evaluate_sequence(x, y, dx, dy, player);
+                    if pattern_score > 0 {
+                        score += pattern_score;
+
+                        let mut nx = x as isize;
+                        let mut ny = y as isize;
+                        while nx >= 0 && ny >= 0 && nx < self.size as isize && ny < self.size as isize {
+                            if self.board.get_cell(nx as usize, ny as usize) != Some(player) {
+                                break;
+                            }
+                            processed[dir_idx][ny as usize][nx as usize] = true;
+                            nx += dx;
+                            ny += dy;
+                        }
+
+                        nx = x as isize - dx;
+                        ny = y as isize - dy;
+                        while nx >= 0 && ny >= 0 && nx < self.size as isize && ny < self.size as isize {
+                            if self.board.get_cell(nx as usize, ny as usize) != Some(player) {
+                                break;
+                            }
+                            processed[dir_idx][ny as usize][nx as usize] = true;
+                            nx -= dx;
+                            ny -= dy;
+                        }
+                    }
+                }
+            }
+        }
+
+        score
+    }
 }
 
 #[cfg(test)]
@@ -639,5 +762,87 @@ mod tests {
         assert_eq!(game.board.get_cell(10, 10), Some(Cell::MyStone));
         assert_eq!(game.game_over(), Some(Cell::MyStone));
         assert!(!game.game_in_progress);
+    }
+
+    #[test]
+    fn test_evaluate_open_four() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 1..5 {
+            game.board.set_cell(x, 10, Cell::MyStone).unwrap();
+        }
+
+        let score = game.evaluate(Cell::MyStone);
+        assert!(score >= SCORE_OPEN_FOUR);
+    }
+
+    #[test]
+    fn test_evaluate_closed_four() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        game.board.set_cell(0, 10, Cell::OpStone).unwrap();
+        for x in 1..5 {
+            game.board.set_cell(x, 10, Cell::MyStone).unwrap();
+        }
+
+        let score = game.evaluate(Cell::MyStone);
+        assert!(score >= SCORE_CLOSED_FOUR);
+    }
+
+    #[test]
+    fn test_evaluate_open_three() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 1..4 {
+            game.board.set_cell(x, 10, Cell::MyStone).unwrap();
+        }
+
+        let score = game.evaluate(Cell::MyStone);
+        assert!(score >= SCORE_OPEN_THREE);
+    }
+
+    #[test]
+    fn test_evaluate_empty_board() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        let score = game.evaluate(Cell::MyStone);
+        assert_eq!(score, 0);
+    }
+
+    #[test]
+    fn test_evaluate_opponent_patterns() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 1..5 {
+            game.board.set_cell(x, 5, Cell::OpStone).unwrap();
+        }
+
+        let my_score = game.evaluate(Cell::MyStone);
+        let opp_score = game.evaluate(Cell::OpStone);
+
+        assert_eq!(my_score, 0);
+        assert!(opp_score >= SCORE_OPEN_FOUR);
+    }
+
+    #[test]
+    fn test_evaluate_multiple_patterns() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 1..4 {
+            game.board.set_cell(x, 10, Cell::MyStone).unwrap();
+        }
+
+        for y in 1..4 {
+            game.board.set_cell(10, y, Cell::MyStone).unwrap();
+        }
+
+        let score = game.evaluate(Cell::MyStone);
+        assert!(score >= SCORE_OPEN_THREE * 2);
     }
 }
