@@ -183,13 +183,14 @@ impl GameState {
     }
 
     fn center_distance(&self, x: usize, y: usize) -> usize {
-        let dx = if x > 10 { x - 10 } else { 10 - x };
-        let dy = if y > 10 { y - 10 } else { 10 - y };
+        let center = self.size / 2;
+        let dx = if x > center { x - center } else { center - x };
+        let dy = if y > center { y - center } else { center - y };
         dx.max(dy)
     }
 
-    fn add_candidate(mask: &mut [bool; 400], x: usize, y: usize) {
-        let idx = y * 20 + x;
+    fn add_candidate(mask: &mut [bool; 400], size: usize, x: usize, y: usize) {
+        let idx = y * size + x;
         mask[idx] = true;
     }
 
@@ -224,7 +225,7 @@ impl GameState {
                         let ux = nx as usize;
                         let uy = ny as usize;
                         if self.board.is_empty(ux, uy) {
-                            GameState::add_candidate(&mut mask, ux, uy);
+                            GameState::add_candidate(&mut mask, self.size, ux, uy);
                         }
                     }
                 }
@@ -249,7 +250,7 @@ impl GameState {
                                 let ux = nx as usize;
                                 let uy = ny as usize;
                                 if self.board.is_empty(ux, uy) {
-                                    GameState::add_candidate(&mut mask, ux, uy);
+                                    GameState::add_candidate(&mut mask, self.size, ux, uy);
                                 }
                             }
                         }
@@ -262,7 +263,7 @@ impl GameState {
         let mut candidates = Vec::new();
         for y in 0..self.size {
             for x in 0..self.size {
-                if mask[y * 20 + x] {
+                if mask[y * self.size + x] {
                     candidates.push((x, y));
                 }
             }
