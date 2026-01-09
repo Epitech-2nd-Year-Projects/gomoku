@@ -4,17 +4,11 @@ const CANDIDATE_RADIUS: isize = 2;
 const CANDIDATE_CAP: usize = 80;
 const CENTER_CELLS: [(usize, usize); 4] = [(10, 10), (9, 9), (9, 10), (10, 9)];
 
-#[allow(dead_code)]
 const SCORE_OPEN_FOUR: i32 = 10000;
-#[allow(dead_code)]
 const SCORE_CLOSED_FOUR: i32 = 1000;
-#[allow(dead_code)]
 const SCORE_OPEN_THREE: i32 = 500;
-#[allow(dead_code)]
 const SCORE_CLOSED_THREE: i32 = 100;
-#[allow(dead_code)]
 const SCORE_OPEN_TWO: i32 = 10;
-#[allow(dead_code)]
 const SCORE_CLOSED_TWO: i32 = 1;
 
 pub struct GameState {
@@ -292,6 +286,18 @@ impl GameState {
                 let my_best = self.best_chain_len(x, y, Cell::MyStone) as i32;
                 let opp_best = self.best_chain_len(x, y, Cell::OpStone) as i32;
                 let mut score = my_best * my_best * 10 + opp_best * opp_best * 12;
+
+                let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
+                let mut my_pattern_score = 0;
+                let mut opp_pattern_score = 0;
+
+                for &(dx, dy) in &directions {
+                    my_pattern_score += self.evaluate_sequence(x, y, dx, dy, Cell::MyStone);
+                    opp_pattern_score += self.evaluate_sequence(x, y, dx, dy, Cell::OpStone);
+                }
+
+                score += my_pattern_score - opp_pattern_score;
+
                 let center_dist = self.center_distance(x, y);
                 if early_game {
                     let bonus = (4_i32 - center_dist as i32).max(0);
@@ -366,7 +372,6 @@ impl GameState {
             .find(|&(x, y)| self.validate_move(x, y).is_ok())
     }
 
-    #[allow(dead_code)]
     fn evaluate_sequence(&self, x: usize, y: usize, dx: isize, dy: isize, player: Cell) -> i32 {
         let mut forward_count = 0;
         let mut backward_count = 0;
@@ -431,64 +436,6 @@ impl GameState {
         } else {
             0
         }
-    }
-
-    #[allow(dead_code)]
-    fn evaluate(&self, player: Cell) -> i32 {
-        let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
-        let mut score = 0;
-        let mut processed = [[[false; 20]; 20]; 4];
-
-        for y in 0..self.size {
-            for x in 0..self.size {
-                if self.board.get_cell(x, y) != Some(player) {
-                    continue;
-                }
-
-                for (dir_idx, &(dx, dy)) in directions.iter().enumerate() {
-                    if processed[dir_idx][y][x] {
-                        continue;
-                    }
-
-                    let pattern_score = self.evaluate_sequence(x, y, dx, dy, player);
-                    if pattern_score > 0 {
-                        score += pattern_score;
-
-                        let mut nx = x as isize;
-                        let mut ny = y as isize;
-                        while nx >= 0
-                            && ny >= 0
-                            && nx < self.size as isize
-                            && ny < self.size as isize
-                        {
-                            if self.board.get_cell(nx as usize, ny as usize) != Some(player) {
-                                break;
-                            }
-                            processed[dir_idx][ny as usize][nx as usize] = true;
-                            nx += dx;
-                            ny += dy;
-                        }
-
-                        nx = x as isize - dx;
-                        ny = y as isize - dy;
-                        while nx >= 0
-                            && ny >= 0
-                            && nx < self.size as isize
-                            && ny < self.size as isize
-                        {
-                            if self.board.get_cell(nx as usize, ny as usize) != Some(player) {
-                                break;
-                            }
-                            processed[dir_idx][ny as usize][nx as usize] = true;
-                            nx -= dx;
-                            ny -= dy;
-                        }
-                    }
-                }
-            }
-        }
-
-        score
     }
 }
 
@@ -779,85 +726,4 @@ mod tests {
         assert!(!game.game_in_progress);
     }
 
-    #[test]
-    fn test_evaluate_open_four() {
-        let mut game = GameState::new();
-        game.handle_start(20);
-
-        for x in 1..5 {
-            game.board.set_cell(x, 10, Cell::MyStone).unwrap();
-        }
-
-        let score = game.evaluate(Cell::MyStone);
-        assert!(score >= SCORE_OPEN_FOUR);
-    }
-
-    #[test]
-    fn test_evaluate_closed_four() {
-        let mut game = GameState::new();
-        game.handle_start(20);
-
-        game.board.set_cell(0, 10, Cell::OpStone).unwrap();
-        for x in 1..5 {
-            game.board.set_cell(x, 10, Cell::MyStone).unwrap();
-        }
-
-        let score = game.evaluate(Cell::MyStone);
-        assert!(score >= SCORE_CLOSED_FOUR);
-    }
-
-    #[test]
-    fn test_evaluate_open_three() {
-        let mut game = GameState::new();
-        game.handle_start(20);
-
-        for x in 1..4 {
-            game.board.set_cell(x, 10, Cell::MyStone).unwrap();
-        }
-
-        let score = game.evaluate(Cell::MyStone);
-        assert!(score >= SCORE_OPEN_THREE);
-    }
-
-    #[test]
-    fn test_evaluate_empty_board() {
-        let mut game = GameState::new();
-        game.handle_start(20);
-
-        let score = game.evaluate(Cell::MyStone);
-        assert_eq!(score, 0);
-    }
-
-    #[test]
-    fn test_evaluate_opponent_patterns() {
-        let mut game = GameState::new();
-        game.handle_start(20);
-
-        for x in 1..5 {
-            game.board.set_cell(x, 5, Cell::OpStone).unwrap();
-        }
-
-        let my_score = game.evaluate(Cell::MyStone);
-        let opp_score = game.evaluate(Cell::OpStone);
-
-        assert_eq!(my_score, 0);
-        assert!(opp_score >= SCORE_OPEN_FOUR);
-    }
-
-    #[test]
-    fn test_evaluate_multiple_patterns() {
-        let mut game = GameState::new();
-        game.handle_start(20);
-
-        for x in 1..4 {
-            game.board.set_cell(x, 10, Cell::MyStone).unwrap();
-        }
-
-        for y in 1..4 {
-            game.board.set_cell(10, y, Cell::MyStone).unwrap();
-        }
-
-        let score = game.evaluate(Cell::MyStone);
-        assert!(score >= SCORE_OPEN_THREE * 2);
-    }
 }
