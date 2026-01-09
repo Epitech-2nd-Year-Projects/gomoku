@@ -725,5 +725,4 @@ mod tests {
         assert_eq!(game.game_over(), Some(Cell::MyStone));
         assert!(!game.game_in_progress);
     }
-
 }
