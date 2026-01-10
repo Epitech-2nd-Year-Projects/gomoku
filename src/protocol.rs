@@ -42,10 +42,11 @@ pub fn parse_line(line: &str) -> Command {
         }
         "TURN" => {
             if parts.len() >= 2 {
-                parse_coordinates(parts[1])
+                let coords_str = parts[1..].join("");
+                parse_coordinates(&coords_str)
                     .map(|(x, y)| Command::Turn(x, y))
                     .unwrap_or_else(|_| {
-                        Command::Error(format!("Invalid coordinates for TURN: {}", parts[1]))
+                        Command::Error(format!("Invalid coordinates for TURN: {}", coords_str))
                     })
             } else {
                 Command::Error("Missing coordinates for TURN".to_string())
@@ -69,12 +70,13 @@ pub fn parse_line(line: &str) -> Command {
 }
 
 fn parse_coordinates(s: &str) -> Result<(usize, usize), ()> {
-    let coords: Vec<&str> = s.split(',').collect();
-    if coords.len() != 2 {
+    let s = s.replace(' ', "");
+    let coords: Vec<&str> = s.split(',').filter(|p| !p.is_empty()).collect();
+    if coords.len() < 2 {
         return Err(());
     }
-    let x = coords[0].trim().parse::<usize>().map_err(|_| ())?;
-    let y = coords[1].trim().parse::<usize>().map_err(|_| ())?;
+    let x = coords[0].parse::<usize>().map_err(|_| ())?;
+    let y = coords[1].parse::<usize>().map_err(|_| ())?;
     Ok((x, y))
 }
 
@@ -87,28 +89,20 @@ pub fn parse_board_line(line: &str) -> Result<BoardLine, String> {
         return Ok(BoardLine::Done);
     }
 
-    let mut parts = trimmed.split(',').map(str::trim);
-    let x_str = parts
-        .next()
-        .ok_or_else(|| format!("Invalid BOARD line '{}'", trimmed))?;
-    let y_str = parts
-        .next()
-        .ok_or_else(|| format!("Invalid BOARD line '{}'", trimmed))?;
-    let field_str = parts
-        .next()
-        .ok_or_else(|| format!("Invalid BOARD line '{}'", trimmed))?;
+    let normalized = trimmed.replace(' ', "");
+    let parts: Vec<&str> = normalized.split(',').filter(|s| !s.is_empty()).collect();
 
-    if parts.next().is_some() {
+    if parts.len() < 3 {
         return Err(format!("Invalid BOARD line '{}'", trimmed));
     }
 
-    let x = x_str
+    let x = parts[0]
         .parse::<usize>()
         .map_err(|_| format!("Invalid BOARD line '{}'", trimmed))?;
-    let y = y_str
+    let y = parts[1]
         .parse::<usize>()
         .map_err(|_| format!("Invalid BOARD line '{}'", trimmed))?;
-    let field = field_str
+    let field = parts[2]
         .parse::<usize>()
         .map_err(|_| format!("Invalid BOARD line '{}'", trimmed))?;
 
@@ -199,7 +193,58 @@ mod tests {
     fn test_parse_board_line_invalid() {
         assert!(parse_board_line("10,11").is_err());
         assert!(parse_board_line("10,xx,1").is_err());
-        assert!(parse_board_line("1,2,3,4").is_err());
         assert!(parse_board_line("").is_err());
+        assert!(parse_board_line("abc").is_err());
+        assert!(parse_board_line("-1,0,1").is_err());
+    }
+
+    #[test]
+    fn test_parse_board_line_extra_args_tolerated() {
+        assert_eq!(
+            parse_board_line("1,2,3,4"),
+            Ok(BoardLine::Move {
+                x: 1,
+                y: 2,
+                field: 3
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_coordinates_with_spaces() {
+        assert_eq!(parse_line("TURN 10 , 11"), Command::Turn(10, 11));
+        assert_eq!(parse_line("TURN  10,11"), Command::Turn(10, 11));
+        assert_eq!(parse_line("TURN 10,  11"), Command::Turn(10, 11));
+    }
+
+    #[test]
+    fn test_parse_board_line_with_spaces() {
+        assert_eq!(
+            parse_board_line("10 , 11 , 2"),
+            Ok(BoardLine::Move {
+                x: 10,
+                y: 11,
+                field: 2
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_extra_whitespace() {
+        assert_eq!(parse_line("  START   20  "), Command::Start(20));
+        assert_eq!(parse_line("  BEGIN  "), Command::Begin);
+        assert_eq!(parse_line("\tTURN 5,5\t"), Command::Turn(5, 5));
+    }
+
+    #[test]
+    fn test_parse_extra_args_ignored() {
+        assert_eq!(parse_line("START 20 extra args"), Command::Start(20));
+    }
+
+    #[test]
+    fn test_parse_done_case_insensitive() {
+        assert_eq!(parse_board_line("done"), Ok(BoardLine::Done));
+        assert_eq!(parse_board_line("Done"), Ok(BoardLine::Done));
+        assert_eq!(parse_board_line("dOnE"), Ok(BoardLine::Done));
     }
 }

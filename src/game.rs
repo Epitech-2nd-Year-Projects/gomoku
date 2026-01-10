@@ -343,6 +343,10 @@ impl GameState {
     }
 
     pub fn handle_turn(&mut self, x: usize, y: usize) -> String {
+        if !self.is_initialized {
+            self.handle_start(20);
+        }
+
         if let Err(e) = self.validate_move(x, y) {
             return e.to_string();
         }
@@ -372,7 +376,7 @@ impl GameState {
 
     pub fn handle_begin(&mut self) -> String {
         if !self.is_initialized {
-            return "ERROR game not initialized".to_string();
+            self.handle_start(20);
         }
         self.game_in_progress = true;
         self.generate_move()
@@ -380,7 +384,7 @@ impl GameState {
 
     pub fn handle_board_start(&mut self) -> Result<(), &'static str> {
         if !self.is_initialized {
-            return Err("ERROR game not initialized");
+            self.handle_start(20);
         }
         self.game_in_progress = true;
         self.board.clear();
@@ -395,7 +399,7 @@ impl GameState {
         field: usize,
     ) -> Result<(), &'static str> {
         if !self.is_initialized {
-            return Err("ERROR game not initialized");
+            self.handle_start(20);
         }
         if x >= self.size || y >= self.size {
             return Err("ERROR coordinates out of range");
@@ -415,7 +419,7 @@ impl GameState {
 
     pub fn handle_board_done(&mut self) -> String {
         if !self.is_initialized {
-            return "ERROR game not initialized".to_string();
+            self.handle_start(20);
         }
         self.inc_scores.rebuild_from_board(&self.board);
         self.generate_move()
@@ -594,7 +598,8 @@ impl GameState {
             .find_immediate_win(Cell::MyStone)
             .or_else(|| self.find_immediate_win(Cell::OpStone))
             .or_else(|| self.find_best_move())
-            .or_else(|| self.fallback_move());
+            .or_else(|| self.fallback_move())
+            .or_else(|| self.any_empty_cell());
 
         if let Some((x, y)) = move_coords {
             self.place_stone(x, y, Cell::MyStone);
@@ -606,7 +611,11 @@ impl GameState {
             return format!("{},{}", x, y);
         }
 
-        "ERROR board full".to_string()
+        self.emergency_move()
+    }
+
+    fn any_empty_cell(&self) -> Option<(usize, usize)> {
+        self.board.iter_empty().next()
     }
 
     fn fallback_move(&self) -> Option<(usize, usize)> {
@@ -619,6 +628,20 @@ impl GameState {
         self.board
             .iter_empty()
             .find(|&(x, y)| self.validate_move(x, y).is_ok())
+    }
+
+    pub fn emergency_move(&self) -> String {
+        if let Some((x, y)) = self.board.iter_empty().next() {
+            return format!("{},{}", x, y);
+        }
+        for y in 0..20 {
+            for x in 0..20 {
+                if self.board.get_cell(x, y) == Some(Cell::Empty) {
+                    return format!("{},{}", x, y);
+                }
+            }
+        }
+        "10,10".to_string()
     }
 
     fn negamax(
@@ -1040,12 +1063,6 @@ mod tests {
     #[test]
     fn test_board_move_errors() {
         let mut game = GameState::new();
-        assert_eq!(game.handle_board_start(), Err("ERROR game not initialized"));
-        assert_eq!(
-            game.handle_board_move(0, 0, 1),
-            Err("ERROR game not initialized")
-        );
-
         game.handle_start(20);
 
         assert_eq!(
@@ -1060,6 +1077,25 @@ mod tests {
             game.handle_board_move(0, 0, 9),
             Err("ERROR invalid board field")
         );
+    }
+
+    #[test]
+    fn test_auto_initialize_on_commands() {
+        let mut game = GameState::new();
+        assert!(!game.is_initialized);
+
+        assert!(game.handle_board_start().is_ok());
+        assert!(game.is_initialized);
+
+        let mut game2 = GameState::new();
+        let response = game2.handle_begin();
+        assert!(!response.contains("ERROR"));
+        assert!(game2.is_initialized);
+
+        let mut game3 = GameState::new();
+        let response = game3.handle_turn(5, 5);
+        assert!(!response.contains("ERROR"));
+        assert!(game3.is_initialized);
     }
 
     #[test]
@@ -1174,6 +1210,53 @@ mod tests {
         assert_eq!(game.board.get_cell(10, 10), Some(Cell::MyStone));
         assert_eq!(game.game_over(), Some(Cell::MyStone));
         assert!(!game.game_in_progress);
+    }
+
+    #[test]
+    fn test_emergency_move_returns_valid_coords() {
+        let game = GameState::new();
+        let response = game.emergency_move();
+        let parts: Vec<&str> = response.split(',').collect();
+        assert_eq!(parts.len(), 2);
+        let x: usize = parts[0].parse().unwrap();
+        let y: usize = parts[1].parse().unwrap();
+        assert!(x < 20 && y < 20);
+    }
+
+    #[test]
+    fn test_emergency_move_full_board() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+        for y in 0..20 {
+            for x in 0..20 {
+                game.board.set_cell(x, y, Cell::MyStone).unwrap();
+            }
+        }
+        let response = game.emergency_move();
+        assert_eq!(response, "10,10");
+    }
+
+    #[test]
+    fn test_generate_move_never_errors() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+        for y in 0..20 {
+            for x in 0..20 {
+                game.board.set_cell(x, y, Cell::MyStone).unwrap();
+            }
+        }
+        let response = game.generate_move();
+        assert!(!response.starts_with("ERROR"));
+    }
+
+    #[test]
+    fn test_out_of_bounds_coordinates() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert!(game.handle_turn(100, 100).contains("ERROR"));
+        assert!(game.handle_turn(0, 100).contains("ERROR"));
+        assert!(game.handle_turn(100, 0).contains("ERROR"));
     }
 
     #[test]
