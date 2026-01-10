@@ -1257,6 +1257,9 @@ mod tests {
         assert!(game.handle_turn(100, 100).contains("ERROR"));
         assert!(game.handle_turn(0, 100).contains("ERROR"));
         assert!(game.handle_turn(100, 0).contains("ERROR"));
+    }
+
+    #[test]
     fn test_incremental_scores_single_stone() {
         let mut game = GameState::new();
         game.handle_start(20);
