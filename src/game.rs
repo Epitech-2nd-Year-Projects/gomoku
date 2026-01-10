@@ -1417,4 +1417,335 @@ mod tests {
         let full_scan = game.evaluate_position_full_scan();
         assert_eq!(incremental, full_scan);
     }
+
+    #[test]
+    fn test_validate_move_all_corners() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        let corners = [(0, 0), (19, 0), (0, 19), (19, 19)];
+        for &(x, y) in &corners {
+            assert!(
+                game.validate_move(x, y).is_ok(),
+                "Corner ({}, {}) should be valid",
+                x,
+                y
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_move_edge_cells() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 0..20 {
+            assert!(
+                game.validate_move(x, 0).is_ok(),
+                "Edge cell ({}, 0) should be valid",
+                x
+            );
+            assert!(
+                game.validate_move(x, 19).is_ok(),
+                "Edge cell ({}, 19) should be valid",
+                x
+            );
+        }
+        for y in 1..19 {
+            assert!(
+                game.validate_move(0, y).is_ok(),
+                "Edge cell (0, {}) should be valid",
+                y
+            );
+            assert!(
+                game.validate_move(19, y).is_ok(),
+                "Edge cell (19, {}) should be valid",
+                y
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_move_occupied_by_my_stone() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        game.board.set_cell(5, 5, Cell::MyStone).unwrap();
+        assert_eq!(game.validate_move(5, 5), Err("ERROR cell already occupied"));
+    }
+
+    #[test]
+    fn test_validate_move_occupied_by_opponent() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        game.board.set_cell(5, 5, Cell::OpStone).unwrap();
+        assert_eq!(game.validate_move(5, 5), Err("ERROR cell already occupied"));
+    }
+
+    #[test]
+    fn test_validate_move_forbidden_cell() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        game.board.set_cell(7, 7, Cell::Forbidden).unwrap();
+        assert_eq!(game.validate_move(7, 7), Err("ERROR move forbidden"));
+    }
+
+    #[test]
+    fn test_validate_move_out_of_bounds_boundary() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert!(game.validate_move(19, 19).is_ok());
+
+        assert_eq!(
+            game.validate_move(20, 0),
+            Err("ERROR coordinates out of range")
+        );
+        assert_eq!(
+            game.validate_move(0, 20),
+            Err("ERROR coordinates out of range")
+        );
+        assert_eq!(
+            game.validate_move(20, 19),
+            Err("ERROR coordinates out of range")
+        );
+        assert_eq!(
+            game.validate_move(19, 20),
+            Err("ERROR coordinates out of range")
+        );
+    }
+
+    #[test]
+    fn test_validate_move_large_out_of_bounds() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        assert_eq!(
+            game.validate_move(100, 0),
+            Err("ERROR coordinates out of range")
+        );
+        assert_eq!(
+            game.validate_move(0, 100),
+            Err("ERROR coordinates out of range")
+        );
+        assert_eq!(
+            game.validate_move(1000, 1000),
+            Err("ERROR coordinates out of range")
+        );
+    }
+
+    #[test]
+    fn test_validate_move_not_initialized() {
+        let game = GameState::new();
+        assert_eq!(
+            game.validate_move(10, 10),
+            Err("ERROR game not initialized")
+        );
+    }
+
+    #[test]
+    fn test_turn_at_corners() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        let response = game.handle_turn(0, 0);
+        assert!(!response.contains("ERROR"));
+        assert_eq!(game.board.get_cell(0, 0), Some(Cell::OpStone));
+
+        let mut game2 = GameState::new();
+        game2.handle_start(20);
+        let response2 = game2.handle_turn(19, 19);
+        assert!(!response2.contains("ERROR"));
+        assert_eq!(game2.board.get_cell(19, 19), Some(Cell::OpStone));
+    }
+
+    #[test]
+    fn test_turn_at_edge_row_0() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 0..5 {
+            let response = game.handle_turn(x, 0);
+            assert!(
+                !response.contains("ERROR"),
+                "Turn at ({}, 0) should succeed",
+                x
+            );
+            assert_eq!(game.board.get_cell(x, 0), Some(Cell::OpStone));
+        }
+    }
+
+    #[test]
+    fn test_turn_at_edge_row_19() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 15..20 {
+            let response = game.handle_turn(x, 19);
+            assert!(
+                !response.contains("ERROR"),
+                "Turn at ({}, 19) should succeed",
+                x
+            );
+            assert_eq!(game.board.get_cell(x, 19), Some(Cell::OpStone));
+        }
+    }
+
+    #[test]
+    fn test_game_over_win_at_edge_row_0() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 0..5 {
+            game.board.set_cell(x, 0, Cell::MyStone).unwrap();
+        }
+        assert_eq!(game.game_over(), Some(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_game_over_win_at_edge_row_19() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 0..5 {
+            game.board.set_cell(x, 19, Cell::OpStone).unwrap();
+        }
+        assert_eq!(game.game_over(), Some(Cell::OpStone));
+    }
+
+    #[test]
+    fn test_game_over_win_at_edge_col_0() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for y in 0..5 {
+            game.board.set_cell(0, y, Cell::MyStone).unwrap();
+        }
+        assert_eq!(game.game_over(), Some(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_game_over_win_at_edge_col_19() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for y in 0..5 {
+            game.board.set_cell(19, y, Cell::OpStone).unwrap();
+        }
+        assert_eq!(game.game_over(), Some(Cell::OpStone));
+    }
+
+    #[test]
+    fn test_game_over_diagonal_corner_to_corner() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for i in 0..5 {
+            game.board.set_cell(i, i, Cell::MyStone).unwrap();
+        }
+        assert_eq!(game.game_over(), Some(Cell::MyStone));
+
+        game.handle_restart();
+        game.handle_start(20);
+
+        for i in 0..5 {
+            game.board.set_cell(15 + i, 15 + i, Cell::OpStone).unwrap();
+        }
+        assert_eq!(game.game_over(), Some(Cell::OpStone));
+    }
+
+    #[test]
+    fn test_game_over_anti_diagonal_corners() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for i in 0..5 {
+            game.board.set_cell(19 - i, i, Cell::MyStone).unwrap();
+        }
+        assert_eq!(game.game_over(), Some(Cell::MyStone));
+
+        game.handle_restart();
+        game.handle_start(20);
+
+        for i in 0..5 {
+            game.board.set_cell(4 - i, 15 + i, Cell::OpStone).unwrap();
+        }
+        assert_eq!(game.game_over(), Some(Cell::OpStone));
+    }
+
+    #[test]
+    fn test_game_over_no_false_positive_four() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 0..4 {
+            game.board.set_cell(x, 0, Cell::MyStone).unwrap();
+        }
+        assert_eq!(game.game_over(), None);
+    }
+
+    #[test]
+    fn test_game_over_no_false_positive_scattered() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        game.board.set_cell(0, 0, Cell::MyStone).unwrap();
+        game.board.set_cell(10, 10, Cell::MyStone).unwrap();
+        game.board.set_cell(5, 5, Cell::MyStone).unwrap();
+        game.board.set_cell(15, 15, Cell::MyStone).unwrap();
+        game.board.set_cell(19, 19, Cell::MyStone).unwrap();
+        assert_eq!(game.game_over(), None);
+    }
+
+    #[test]
+    fn test_multiple_win_lines_game_over() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 0..5 {
+            game.board.set_cell(x, 0, Cell::MyStone).unwrap();
+        }
+        for y in 0..5 {
+            game.board.set_cell(10, y, Cell::MyStone).unwrap();
+        }
+        assert_eq!(game.game_over(), Some(Cell::MyStone));
+    }
+
+    #[test]
+    fn test_board_move_at_corners() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+        game.handle_board_start().unwrap();
+
+        game.handle_board_move(0, 0, 1).unwrap();
+        game.handle_board_move(19, 0, 2).unwrap();
+        game.handle_board_move(0, 19, 1).unwrap();
+        game.handle_board_move(19, 19, 2).unwrap();
+
+        assert_eq!(game.board.get_cell(0, 0), Some(Cell::MyStone));
+        assert_eq!(game.board.get_cell(19, 0), Some(Cell::OpStone));
+        assert_eq!(game.board.get_cell(0, 19), Some(Cell::MyStone));
+        assert_eq!(game.board.get_cell(19, 19), Some(Cell::OpStone));
+    }
+
+    #[test]
+    fn test_board_move_edge_boundary() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+        game.handle_board_start().unwrap();
+
+        assert!(game.handle_board_move(19, 0, 1).is_ok());
+        assert!(game.handle_board_move(0, 19, 2).is_ok());
+
+        assert_eq!(
+            game.handle_board_move(20, 0, 1),
+            Err("ERROR coordinates out of range")
+        );
+        assert_eq!(
+            game.handle_board_move(0, 20, 1),
+            Err("ERROR coordinates out of range")
+        );
+    }
 }
