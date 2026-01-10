@@ -10,6 +10,7 @@ const SCORE_OPEN_THREE: i32 = 500;
 const SCORE_CLOSED_THREE: i32 = 100;
 const SCORE_OPEN_TWO: i32 = 10;
 const SCORE_CLOSED_TWO: i32 = 1;
+const SEARCH_DEPTH: usize = 4;
 
 pub struct GameState {
     size: usize,
@@ -155,40 +156,6 @@ impl GameState {
         count
     }
 
-    fn best_chain_len(&self, x: usize, y: usize, player: Cell) -> usize {
-        let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
-        let mut best = 1;
-
-        for (dx, dy) in directions {
-            let mut count = 1;
-            count += self.count_in_direction(x, y, dx, dy, player);
-            count += self.count_in_direction(x, y, -dx, -dy, player);
-            if count > best {
-                best = count;
-            }
-        }
-
-        best
-    }
-
-    fn count_in_direction(&self, x: usize, y: usize, dx: isize, dy: isize, player: Cell) -> usize {
-        let mut count = 0;
-        let mut nx = x as isize + dx;
-        let mut ny = y as isize + dy;
-
-        while nx >= 0 && ny >= 0 && nx < self.size as isize && ny < self.size as isize {
-            if self.board.get_cell(nx as usize, ny as usize) == Some(player) {
-                count += 1;
-                nx += dx;
-                ny += dy;
-            } else {
-                break;
-            }
-        }
-
-        count
-    }
-
     fn center_distance(&self, x: usize, y: usize) -> usize {
         let center = self.size / 2;
         let dx = if x > center { x - center } else { center - x };
@@ -283,10 +250,6 @@ impl GameState {
         let mut scored: Vec<(usize, usize, i32, usize)> = candidates
             .into_iter()
             .map(|(x, y)| {
-                let my_best = self.best_chain_len(x, y, Cell::MyStone) as i32;
-                let opp_best = self.best_chain_len(x, y, Cell::OpStone) as i32;
-                let mut score = my_best * my_best * 10 + opp_best * opp_best * 12;
-
                 let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
                 let mut my_pattern_score = 0;
                 let mut opp_pattern_score = 0;
@@ -296,7 +259,7 @@ impl GameState {
                     opp_pattern_score += self.evaluate_sequence(x, y, dx, dy, Cell::OpStone);
                 }
 
-                score += my_pattern_score - opp_pattern_score;
+                let mut score = my_pattern_score - opp_pattern_score;
 
                 let center_dist = self.center_distance(x, y);
                 if early_game {
@@ -345,6 +308,7 @@ impl GameState {
         let move_coords = self
             .find_immediate_win(Cell::MyStone)
             .or_else(|| self.find_immediate_win(Cell::OpStone))
+            .or_else(|| self.find_best_move())
             .or_else(|| self.fallback_move());
 
         if let Some((x, y)) = move_coords {
@@ -370,6 +334,114 @@ impl GameState {
         self.board
             .iter_empty()
             .find(|&(x, y)| self.validate_move(x, y).is_ok())
+    }
+
+    fn negamax(&mut self, depth: usize, mut alpha: i32, beta: i32, player: Cell) -> i32 {
+        if let Some(winner) = self.game_over() {
+            match winner {
+                Cell::MyStone => {
+                    return if player == Cell::MyStone { 100000 } else { -100000 };
+                }
+                Cell::OpStone => {
+                    return if player == Cell::OpStone { 100000 } else { -100000 };
+                }
+                Cell::Empty => return 0,
+                _ => {}
+            }
+        }
+
+        if depth == 0 {
+            let eval = self.evaluate_position();
+            return if player == Cell::MyStone { eval } else { -eval };
+        }
+
+        let candidates = self.generate_candidates();
+        if candidates.is_empty() {
+            let eval = self.evaluate_position();
+            return if player == Cell::MyStone { eval } else { -eval };
+        }
+
+        let mut best_value = -200000;
+        for (x, y) in candidates {
+            if self.validate_move(x, y).is_err() {
+                continue;
+            }
+
+            self.board.set_cell(x, y, player).unwrap();
+            let next_player = if player == Cell::MyStone {
+                Cell::OpStone
+            } else {
+                Cell::MyStone
+            };
+            let value = -self.negamax(depth - 1, -beta, -alpha, next_player);
+            self.board.set_cell(x, y, Cell::Empty).unwrap();
+
+            if value > best_value {
+                best_value = value;
+            }
+            if value > alpha {
+                alpha = value;
+            }
+            if alpha >= beta {
+                break;
+            }
+        }
+
+        best_value
+    }
+
+    fn find_best_move(&mut self) -> Option<(usize, usize)> {
+        let candidates = self.generate_candidates();
+        if candidates.is_empty() {
+            return None;
+        }
+
+        let mut best_move = None;
+        let mut best_value = -200000;
+        let alpha_init = -200000;
+        let beta_init = 200000;
+
+        for (x, y) in candidates {
+            if self.validate_move(x, y).is_err() {
+                continue;
+            }
+
+            self.board.set_cell(x, y, Cell::MyStone).unwrap();
+            let value = -self.negamax(SEARCH_DEPTH - 1, alpha_init, beta_init, Cell::OpStone);
+            self.board.set_cell(x, y, Cell::Empty).unwrap();
+
+            if value > best_value {
+                best_value = value;
+                best_move = Some((x, y));
+            }
+        }
+
+        best_move
+    }
+
+    fn evaluate(&self, player: Cell) -> i32 {
+        let mut total_score = 0;
+        let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
+
+        for y in 0..self.size {
+            for x in 0..self.size {
+                if self.board.get_cell(x, y) != Some(player) {
+                    continue;
+                }
+
+                for &(dx, dy) in &directions {
+                    total_score += self.evaluate_sequence(x, y, dx, dy, player);
+                }
+            }
+        }
+
+        total_score
+    }
+
+    fn evaluate_position(&self) -> i32 {
+        let my_score = self.evaluate(Cell::MyStone);
+        let opp_score = self.evaluate(Cell::OpStone);
+        my_score - opp_score
     }
 
     fn evaluate_sequence(&self, x: usize, y: usize, dx: isize, dy: isize, player: Cell) -> i32 {
