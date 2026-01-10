@@ -6,6 +6,7 @@ mod zobrist;
 use crate::game::GameState;
 use protocol::{parse_board_line, parse_line, BoardLine, Command};
 use std::io::{self, BufRead, Write};
+use std::panic;
 
 fn handle_board_section<I>(lines: &mut I, game: &mut GameState) -> String
 where
@@ -61,7 +62,31 @@ where
     }
 }
 
+fn process_command(
+    command: Command,
+    lines: &mut impl Iterator<Item = Result<String, io::Error>>,
+    game: &mut GameState,
+) -> Option<String> {
+    match command {
+        Command::Start(size) => Some(game.handle_start(size)),
+        Command::Turn(x, y) => Some(game.handle_turn(x, y)),
+        Command::Begin => Some(game.handle_begin()),
+        Command::Board => Some(handle_board_section(lines, game)),
+        Command::Info(_, _) => None,
+        Command::About => Some(
+            "name=\"pbrain-brainrot\", version=\"1.0.0\", author=\"Brainrot\", country=\"FR\""
+                .to_string(),
+        ),
+        Command::Restart => Some(game.handle_restart()),
+        Command::End => None,
+        Command::Error(msg) => Some(format!("ERROR {}", msg)),
+        Command::Unknown(msg) => Some(format!("UNKNOWN {}", msg)),
+    }
+}
+
 fn main() {
+    panic::set_hook(Box::new(|_| {}));
+
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     let mut lines = stdin.lock().lines();
@@ -76,38 +101,31 @@ fn main() {
                 }
 
                 let command = parse_line(input);
-                match command {
-                    Command::Start(size) => {
-                        println!("{}", game.handle_start(size));
+                let is_end = matches!(command, Command::End);
+                let needs_move_response = matches!(
+                    command,
+                    Command::Turn(_, _) | Command::Begin | Command::Board
+                );
+
+                let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+                    process_command(command, &mut lines, &mut game)
+                }));
+
+                match result {
+                    Ok(Some(response)) => println!("{}", response),
+                    Ok(None) => {}
+                    Err(_) => {
+                        if needs_move_response {
+                            let fallback = game.emergency_move();
+                            println!("{}", fallback);
+                        } else {
+                            println!("ERROR internal error");
+                        }
                     }
-                    Command::Turn(x, y) => {
-                        println!("{}", game.handle_turn(x, y));
-                    }
-                    Command::Begin => {
-                        println!("{}", game.handle_begin());
-                    }
-                    Command::Board => {
-                        let response = handle_board_section(&mut lines, &mut game);
-                        println!("{}", response);
-                    }
-                    Command::Info(_, _) => {
-                        // Ignore INFO commands for now
-                    }
-                    Command::About => {
-                        println!("name=\"pbrain-brainrot\", version=\"1.0.0\", author=\"Brainrot\", country=\"FR\"");
-                    }
-                    Command::Restart => {
-                        println!("{}", game.handle_restart());
-                    }
-                    Command::End => {
-                        break;
-                    }
-                    Command::Error(msg) => {
-                        println!("ERROR {}", msg);
-                    }
-                    Command::Unknown(msg) => {
-                        println!("UNKNOWN {}", msg);
-                    }
+                }
+
+                if is_end {
+                    break;
                 }
 
                 if let Err(e) = stdout.flush() {
@@ -168,12 +186,14 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_board_section_uninitialized() {
+    fn test_handle_board_section_auto_initializes() {
         let mut game = GameState::new();
         let mut lines = vec![Ok("DONE".to_string())].into_iter();
         let response = handle_board_section(&mut lines, &mut game);
 
-        assert_eq!(response, "ERROR game not initialized");
+        assert!(!response.contains("ERROR"));
+        let parts: Vec<&str> = response.split(',').collect();
+        assert_eq!(parts.len(), 2);
     }
 
     #[test]
