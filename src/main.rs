@@ -1,6 +1,7 @@
 mod board;
 mod game;
 mod protocol;
+mod zobrist;
 
 use crate::game::GameState;
 use protocol::{parse_board_line, parse_line, BoardLine, Command};

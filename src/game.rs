@@ -1,4 +1,5 @@
 use crate::board::{Board, Cell};
+use crate::zobrist::{TTFlag, TranspositionTable, ZobristKeys};
 use std::time::{Duration, Instant};
 
 const CANDIDATE_RADIUS: isize = 2;
@@ -20,6 +21,8 @@ pub struct GameState {
     is_initialized: bool,
     game_in_progress: bool,
     board: Board,
+    zobrist: ZobristKeys,
+    tt: TranspositionTable,
 }
 
 impl GameState {
@@ -29,6 +32,8 @@ impl GameState {
             is_initialized: false,
             game_in_progress: false,
             board: Board::default(),
+            zobrist: ZobristKeys::new(),
+            tt: TranspositionTable::new(),
         }
     }
 
@@ -40,7 +45,35 @@ impl GameState {
         self.is_initialized = true;
         self.game_in_progress = false;
         self.board.clear();
+        self.tt.clear();
         "OK".to_string()
+    }
+
+    #[inline]
+    fn place_stone(&mut self, x: usize, y: usize, cell: Cell) {
+        if let Some(idx) = self.board.get_index(x, y) {
+            let old_cell = self.board.get_cell(x, y).unwrap_or(Cell::Empty);
+            if old_cell != Cell::Empty {
+                self.board
+                    .update_hash(self.zobrist.stone_key(idx, old_cell));
+            }
+            self.board.set_cell(x, y, cell).unwrap();
+            if cell != Cell::Empty {
+                self.board.update_hash(self.zobrist.stone_key(idx, cell));
+            }
+        }
+    }
+
+    #[inline]
+    fn remove_stone(&mut self, x: usize, y: usize) {
+        if let Some(idx) = self.board.get_index(x, y) {
+            let old_cell = self.board.get_cell(x, y).unwrap_or(Cell::Empty);
+            if old_cell != Cell::Empty {
+                self.board
+                    .update_hash(self.zobrist.stone_key(idx, old_cell));
+            }
+            self.board.set_cell(x, y, Cell::Empty).unwrap();
+        }
     }
 
     pub fn validate_move(&self, x: usize, y: usize) -> Result<(), &'static str> {
@@ -64,7 +97,7 @@ impl GameState {
             return e.to_string();
         }
 
-        self.board.set_cell(x, y, Cell::OpStone).unwrap();
+        self.place_stone(x, y, Cell::OpStone);
         self.game_in_progress = true;
 
         if self.game_over().is_some() {
@@ -125,9 +158,8 @@ impl GameState {
             _ => return Err("ERROR invalid board field"),
         };
 
-        self.board
-            .set_cell(x, y, cell)
-            .map_err(|_| "ERROR coordinates out of range")
+        self.place_stone(x, y, cell);
+        Ok(())
     }
 
     pub fn handle_board_done(&mut self) -> String {
@@ -143,6 +175,7 @@ impl GameState {
         }
         self.game_in_progress = false;
         self.board.clear();
+        self.tt.clear();
         "OK".to_string()
     }
 
@@ -291,13 +324,9 @@ impl GameState {
         let candidates = self.generate_candidates();
 
         for (x, y) in candidates {
-            self.board
-                .set_cell(x, y, player)
-                .expect("board indices from candidates");
+            self.place_stone(x, y, player);
             let is_win = self.board.check_five_in_a_row(player);
-            self.board
-                .set_cell(x, y, Cell::Empty)
-                .expect("board indices from candidates");
+            self.remove_stone(x, y);
 
             if is_win {
                 return Some((x, y));
@@ -315,7 +344,7 @@ impl GameState {
             .or_else(|| self.fallback_move());
 
         if let Some((x, y)) = move_coords {
-            self.board.set_cell(x, y, Cell::MyStone).unwrap();
+            self.place_stone(x, y, Cell::MyStone);
 
             if self.game_over().is_some() {
                 self.game_in_progress = false;
@@ -377,6 +406,30 @@ impl GameState {
             return Some(if player == Cell::MyStone { eval } else { -eval });
         }
 
+        let hash = self.compute_hash_with_turn(player);
+        let original_alpha = alpha;
+
+        if let Some(entry) = self.tt.probe(hash) {
+            if entry.depth as usize >= depth {
+                match entry.flag {
+                    TTFlag::Exact => return Some(entry.score),
+                    TTFlag::LowerBound => {
+                        if entry.score > alpha {
+                            alpha = entry.score;
+                        }
+                    }
+                    TTFlag::UpperBound => {
+                        if entry.score < beta {
+                            return Some(entry.score);
+                        }
+                    }
+                }
+                if alpha >= beta {
+                    return Some(entry.score);
+                }
+            }
+        }
+
         let candidates = self.generate_candidates();
         if candidates.is_empty() {
             let eval = self.evaluate_position();
@@ -384,22 +437,24 @@ impl GameState {
         }
 
         let mut best_value = -200000;
+        let mut best_move = None;
         for (x, y) in candidates {
             if self.validate_move(x, y).is_err() {
                 continue;
             }
 
-            self.board.set_cell(x, y, player).unwrap();
+            self.place_stone(x, y, player);
             let next_player = if player == Cell::MyStone {
                 Cell::OpStone
             } else {
                 Cell::MyStone
             };
             let value = -self.negamax(depth - 1, -beta, -alpha, next_player, deadline)?;
-            self.board.set_cell(x, y, Cell::Empty).unwrap();
+            self.remove_stone(x, y);
 
             if value > best_value {
                 best_value = value;
+                best_move = Some((x, y));
             }
             if value > alpha {
                 alpha = value;
@@ -409,7 +464,27 @@ impl GameState {
             }
         }
 
+        let flag = if best_value <= original_alpha {
+            TTFlag::UpperBound
+        } else if best_value >= beta {
+            TTFlag::LowerBound
+        } else {
+            TTFlag::Exact
+        };
+
+        self.tt
+            .store(hash, depth as u8, best_value, flag, best_move);
+
         Some(best_value)
+    }
+
+    #[inline]
+    fn compute_hash_with_turn(&self, player: Cell) -> u64 {
+        let mut hash = self.board.hash();
+        if player == Cell::OpStone {
+            hash ^= self.zobrist.turn_key();
+        }
+        hash
     }
 
     fn find_best_move(&mut self) -> Option<(usize, usize)> {
@@ -436,9 +511,9 @@ impl GameState {
                     continue;
                 }
 
-                self.board.set_cell(*x, *y, Cell::MyStone).unwrap();
+                self.place_stone(*x, *y, Cell::MyStone);
                 let result = self.negamax(depth - 1, -beta, -alpha, Cell::OpStone, deadline);
-                self.board.set_cell(*x, *y, Cell::Empty).unwrap();
+                self.remove_stone(*x, *y);
 
                 match result {
                     Some(child_value) => {
