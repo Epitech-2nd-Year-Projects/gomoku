@@ -4,6 +4,13 @@ const CANDIDATE_RADIUS: isize = 2;
 const CANDIDATE_CAP: usize = 80;
 const CENTER_CELLS: [(usize, usize); 4] = [(10, 10), (9, 9), (9, 10), (10, 9)];
 
+const SCORE_OPEN_FOUR: i32 = 10000;
+const SCORE_CLOSED_FOUR: i32 = 1000;
+const SCORE_OPEN_THREE: i32 = 500;
+const SCORE_CLOSED_THREE: i32 = 100;
+const SCORE_OPEN_TWO: i32 = 10;
+const SCORE_CLOSED_TWO: i32 = 1;
+
 pub struct GameState {
     size: usize,
     is_initialized: bool,
@@ -279,6 +286,18 @@ impl GameState {
                 let my_best = self.best_chain_len(x, y, Cell::MyStone) as i32;
                 let opp_best = self.best_chain_len(x, y, Cell::OpStone) as i32;
                 let mut score = my_best * my_best * 10 + opp_best * opp_best * 12;
+
+                let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
+                let mut my_pattern_score = 0;
+                let mut opp_pattern_score = 0;
+
+                for &(dx, dy) in &directions {
+                    my_pattern_score += self.evaluate_sequence(x, y, dx, dy, Cell::MyStone);
+                    opp_pattern_score += self.evaluate_sequence(x, y, dx, dy, Cell::OpStone);
+                }
+
+                score += my_pattern_score - opp_pattern_score;
+
                 let center_dist = self.center_distance(x, y);
                 if early_game {
                     let bonus = (4_i32 - center_dist as i32).max(0);
@@ -351,6 +370,72 @@ impl GameState {
         self.board
             .iter_empty()
             .find(|&(x, y)| self.validate_move(x, y).is_ok())
+    }
+
+    fn evaluate_sequence(&self, x: usize, y: usize, dx: isize, dy: isize, player: Cell) -> i32 {
+        let mut forward_count = 0;
+        let mut backward_count = 0;
+
+        let mut nx = x as isize + dx;
+        let mut ny = y as isize + dy;
+        while nx >= 0 && ny >= 0 && nx < self.size as isize && ny < self.size as isize {
+            if self.board.get_cell(nx as usize, ny as usize) == Some(player) {
+                forward_count += 1;
+                nx += dx;
+                ny += dy;
+            } else {
+                break;
+            }
+        }
+
+        let forward_open = nx >= 0
+            && ny >= 0
+            && nx < self.size as isize
+            && ny < self.size as isize
+            && self.board.get_cell(nx as usize, ny as usize) == Some(Cell::Empty);
+
+        nx = x as isize - dx;
+        ny = y as isize - dy;
+        while nx >= 0 && ny >= 0 && nx < self.size as isize && ny < self.size as isize {
+            if self.board.get_cell(nx as usize, ny as usize) == Some(player) {
+                backward_count += 1;
+                nx -= dx;
+                ny -= dy;
+            } else {
+                break;
+            }
+        }
+
+        let backward_open = nx >= 0
+            && ny >= 0
+            && nx < self.size as isize
+            && ny < self.size as isize
+            && self.board.get_cell(nx as usize, ny as usize) == Some(Cell::Empty);
+
+        let total_count = forward_count + backward_count + 1;
+        let open_sides = if forward_open { 1 } else { 0 } + if backward_open { 1 } else { 0 };
+
+        if total_count >= 4 {
+            if open_sides == 2 {
+                SCORE_OPEN_FOUR
+            } else {
+                SCORE_CLOSED_FOUR
+            }
+        } else if total_count == 3 {
+            if open_sides == 2 {
+                SCORE_OPEN_THREE
+            } else {
+                SCORE_CLOSED_THREE
+            }
+        } else if total_count == 2 {
+            if open_sides == 2 {
+                SCORE_OPEN_TWO
+            } else {
+                SCORE_CLOSED_TWO
+            }
+        } else {
+            0
+        }
     }
 }
 
