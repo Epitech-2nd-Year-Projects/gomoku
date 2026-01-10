@@ -427,9 +427,8 @@ impl GameState {
             }
 
             let mut depth_best_move = None;
-            let mut depth_best_value = -200000;
-            let alpha_init = -200000;
-            let beta_init = 200000;
+            let mut alpha = -200000;
+            let beta = 200000;
             let mut search_completed = true;
 
             for (x, y) in &candidates {
@@ -438,15 +437,14 @@ impl GameState {
                 }
 
                 self.board.set_cell(*x, *y, Cell::MyStone).unwrap();
-                let result =
-                    self.negamax(depth - 1, alpha_init, beta_init, Cell::OpStone, deadline);
+                let result = self.negamax(depth - 1, -beta, -alpha, Cell::OpStone, deadline);
                 self.board.set_cell(*x, *y, Cell::Empty).unwrap();
 
                 match result {
-                    Some(value) => {
-                        let value = -value;
-                        if value > depth_best_value {
-                            depth_best_value = value;
+                    Some(child_value) => {
+                        let value = -child_value;
+                        if value > alpha {
+                            alpha = value;
                             depth_best_move = Some((*x, *y));
                         }
                     }
