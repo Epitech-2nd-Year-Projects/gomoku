@@ -36,13 +36,6 @@ The bot implements the mandatory protocol commands:
 - `RESTART` - Reset game state
 - `END` - Exit bot
 
-## Debug options
-
-Enable debug logging to stderr with:
-```sh
-GOMOKU_DEBUG=1 ./pbrain-gomoku-ai
-```
-
 ## Constraints
 
 - Time limit: 5 seconds per move
