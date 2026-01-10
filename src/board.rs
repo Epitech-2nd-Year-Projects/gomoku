@@ -26,6 +26,7 @@ impl fmt::Display for Cell {
 pub struct Board {
     cells: [Cell; 400],
     size: usize,
+    hash: u64,
 }
 
 impl Default for Board {
@@ -33,6 +34,7 @@ impl Default for Board {
         Self {
             cells: [Cell::Empty; 400],
             size: 20,
+            hash: 0,
         }
     }
 }
@@ -76,6 +78,17 @@ impl Board {
 
     pub fn clear(&mut self) {
         self.cells = [Cell::Empty; 400];
+        self.hash = 0;
+    }
+
+    #[inline]
+    pub fn hash(&self) -> u64 {
+        self.hash
+    }
+
+    #[inline]
+    pub fn update_hash(&mut self, key: u64) {
+        self.hash ^= key;
     }
 
     pub fn iter_indices(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
