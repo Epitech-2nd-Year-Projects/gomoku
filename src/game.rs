@@ -1,4 +1,5 @@
 use crate::board::{Board, Cell};
+use std::time::{Duration, Instant};
 
 const CANDIDATE_RADIUS: isize = 2;
 const CANDIDATE_CAP: usize = 80;
@@ -10,7 +11,9 @@ const SCORE_OPEN_THREE: i32 = 500;
 const SCORE_CLOSED_THREE: i32 = 100;
 const SCORE_OPEN_TWO: i32 = 10;
 const SCORE_CLOSED_TWO: i32 = 1;
-const SEARCH_DEPTH: usize = 4;
+
+const TIME_BUDGET: Duration = Duration::from_secs(5);
+const MAX_SEARCH_DEPTH: usize = 20;
 
 pub struct GameState {
     size: usize,
@@ -336,37 +339,48 @@ impl GameState {
             .find(|&(x, y)| self.validate_move(x, y).is_ok())
     }
 
-    fn negamax(&mut self, depth: usize, mut alpha: i32, beta: i32, player: Cell) -> i32 {
+    fn negamax(
+        &mut self,
+        depth: usize,
+        mut alpha: i32,
+        beta: i32,
+        player: Cell,
+        deadline: Instant,
+    ) -> Option<i32> {
+        if Instant::now() >= deadline {
+            return None;
+        }
+
         if let Some(winner) = self.game_over() {
             match winner {
                 Cell::MyStone => {
-                    return if player == Cell::MyStone {
+                    return Some(if player == Cell::MyStone {
                         100000
                     } else {
                         -100000
-                    };
+                    });
                 }
                 Cell::OpStone => {
-                    return if player == Cell::OpStone {
+                    return Some(if player == Cell::OpStone {
                         100000
                     } else {
                         -100000
-                    };
+                    });
                 }
-                Cell::Empty => return 0,
+                Cell::Empty => return Some(0),
                 _ => {}
             }
         }
 
         if depth == 0 {
             let eval = self.evaluate_position();
-            return if player == Cell::MyStone { eval } else { -eval };
+            return Some(if player == Cell::MyStone { eval } else { -eval });
         }
 
         let candidates = self.generate_candidates();
         if candidates.is_empty() {
             let eval = self.evaluate_position();
-            return if player == Cell::MyStone { eval } else { -eval };
+            return Some(if player == Cell::MyStone { eval } else { -eval });
         }
 
         let mut best_value = -200000;
@@ -381,7 +395,7 @@ impl GameState {
             } else {
                 Cell::MyStone
             };
-            let value = -self.negamax(depth - 1, -beta, -alpha, next_player);
+            let value = -self.negamax(depth - 1, -beta, -alpha, next_player, deadline)?;
             self.board.set_cell(x, y, Cell::Empty).unwrap();
 
             if value > best_value {
@@ -395,7 +409,7 @@ impl GameState {
             }
         }
 
-        best_value
+        Some(best_value)
     }
 
     fn find_best_move(&mut self) -> Option<(usize, usize)> {
@@ -404,23 +418,45 @@ impl GameState {
             return None;
         }
 
-        let mut best_move = None;
-        let mut best_value = -200000;
-        let alpha_init = -200000;
-        let beta_init = 200000;
+        let deadline = Instant::now() + TIME_BUDGET;
+        let mut best_move: Option<(usize, usize)> = None;
 
-        for (x, y) in candidates {
-            if self.validate_move(x, y).is_err() {
-                continue;
+        for depth in 1..=MAX_SEARCH_DEPTH {
+            if Instant::now() >= deadline {
+                break;
             }
 
-            self.board.set_cell(x, y, Cell::MyStone).unwrap();
-            let value = -self.negamax(SEARCH_DEPTH - 1, alpha_init, beta_init, Cell::OpStone);
-            self.board.set_cell(x, y, Cell::Empty).unwrap();
+            let mut depth_best_move = None;
+            let mut alpha = -200000;
+            let beta = 200000;
+            let mut search_completed = true;
 
-            if value > best_value {
-                best_value = value;
-                best_move = Some((x, y));
+            for (x, y) in &candidates {
+                if self.validate_move(*x, *y).is_err() {
+                    continue;
+                }
+
+                self.board.set_cell(*x, *y, Cell::MyStone).unwrap();
+                let result = self.negamax(depth - 1, -beta, -alpha, Cell::OpStone, deadline);
+                self.board.set_cell(*x, *y, Cell::Empty).unwrap();
+
+                match result {
+                    Some(child_value) => {
+                        let value = -child_value;
+                        if value > alpha {
+                            alpha = value;
+                            depth_best_move = Some((*x, *y));
+                        }
+                    }
+                    None => {
+                        search_completed = false;
+                        break;
+                    }
+                }
+            }
+
+            if search_completed {
+                best_move = depth_best_move;
             }
         }
 
