@@ -340,10 +340,18 @@ impl GameState {
         if let Some(winner) = self.game_over() {
             match winner {
                 Cell::MyStone => {
-                    return if player == Cell::MyStone { 100000 } else { -100000 };
+                    return if player == Cell::MyStone {
+                        100000
+                    } else {
+                        -100000
+                    };
                 }
                 Cell::OpStone => {
-                    return if player == Cell::OpStone { 100000 } else { -100000 };
+                    return if player == Cell::OpStone {
+                        100000
+                    } else {
+                        -100000
+                    };
                 }
                 Cell::Empty => return 0,
                 _ => {}
