@@ -16,6 +16,248 @@ const SCORE_CLOSED_TWO: i32 = 1;
 const TIME_BUDGET: Duration = Duration::from_secs(5);
 const MAX_SEARCH_DEPTH: usize = 20;
 
+const BOARD_SIZE: usize = 20;
+const DIRECTIONS: [(isize, isize); 4] = [(1, 0), (0, 1), (1, 1), (1, -1)];
+
+#[derive(Clone)]
+pub struct IncrementalScores {
+    scores: [[[i32; 4]; 400]; 2],
+    totals: [i32; 2],
+}
+
+impl Default for IncrementalScores {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl IncrementalScores {
+    pub fn new() -> Self {
+        Self {
+            scores: [[[0; 4]; 400]; 2],
+            totals: [0; 2],
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.scores = [[[0; 4]; 400]; 2];
+        self.totals = [0; 2];
+    }
+
+    #[inline]
+    fn player_index(player: Cell) -> usize {
+        match player {
+            Cell::MyStone => 0,
+            Cell::OpStone => 1,
+            _ => 0,
+        }
+    }
+
+    #[inline]
+    fn cell_index(x: usize, y: usize) -> usize {
+        y * BOARD_SIZE + x
+    }
+
+    pub fn evaluate_position(&self) -> i32 {
+        self.totals[0] - self.totals[1]
+    }
+
+    fn evaluate_sequence_for_cell(
+        board: &Board,
+        x: usize,
+        y: usize,
+        dir_idx: usize,
+        player: Cell,
+    ) -> i32 {
+        let (dx, dy) = DIRECTIONS[dir_idx];
+        let size = BOARD_SIZE as isize;
+
+        let mut forward_count = 0;
+        let mut nx = x as isize + dx;
+        let mut ny = y as isize + dy;
+        while nx >= 0 && ny >= 0 && nx < size && ny < size {
+            if board.get_cell(nx as usize, ny as usize) == Some(player) {
+                forward_count += 1;
+                nx += dx;
+                ny += dy;
+            } else {
+                break;
+            }
+        }
+
+        let forward_open = nx >= 0
+            && ny >= 0
+            && nx < size
+            && ny < size
+            && board.get_cell(nx as usize, ny as usize) == Some(Cell::Empty);
+
+        let mut backward_count = 0;
+        nx = x as isize - dx;
+        ny = y as isize - dy;
+        while nx >= 0 && ny >= 0 && nx < size && ny < size {
+            if board.get_cell(nx as usize, ny as usize) == Some(player) {
+                backward_count += 1;
+                nx -= dx;
+                ny -= dy;
+            } else {
+                break;
+            }
+        }
+
+        let backward_open = nx >= 0
+            && ny >= 0
+            && nx < size
+            && ny < size
+            && board.get_cell(nx as usize, ny as usize) == Some(Cell::Empty);
+
+        let total_count = forward_count + backward_count + 1;
+        let open_sides = i32::from(forward_open) + i32::from(backward_open);
+
+        if total_count >= 4 {
+            if open_sides == 2 {
+                SCORE_OPEN_FOUR
+            } else {
+                SCORE_CLOSED_FOUR
+            }
+        } else if total_count == 3 {
+            if open_sides == 2 {
+                SCORE_OPEN_THREE
+            } else {
+                SCORE_CLOSED_THREE
+            }
+        } else if total_count == 2 {
+            if open_sides == 2 {
+                SCORE_OPEN_TWO
+            } else {
+                SCORE_CLOSED_TWO
+            }
+        } else {
+            0
+        }
+    }
+
+    fn collect_affected_stones(
+        board: &Board,
+        x: usize,
+        y: usize,
+        dir_idx: usize,
+    ) -> Vec<(usize, usize, Cell)> {
+        let (dx, dy) = DIRECTIONS[dir_idx];
+        let size = BOARD_SIZE as isize;
+        let mut affected = Vec::new();
+
+        let mut nx = x as isize + dx;
+        let mut ny = y as isize + dy;
+        while nx >= 0 && ny >= 0 && nx < size && ny < size {
+            match board.get_cell(nx as usize, ny as usize) {
+                Some(Cell::MyStone) => {
+                    affected.push((nx as usize, ny as usize, Cell::MyStone));
+                    nx += dx;
+                    ny += dy;
+                }
+                Some(Cell::OpStone) => {
+                    affected.push((nx as usize, ny as usize, Cell::OpStone));
+                    nx += dx;
+                    ny += dy;
+                }
+                _ => break,
+            }
+        }
+
+        nx = x as isize - dx;
+        ny = y as isize - dy;
+        while nx >= 0 && ny >= 0 && nx < size && ny < size {
+            match board.get_cell(nx as usize, ny as usize) {
+                Some(Cell::MyStone) => {
+                    affected.push((nx as usize, ny as usize, Cell::MyStone));
+                    nx -= dx;
+                    ny -= dy;
+                }
+                Some(Cell::OpStone) => {
+                    affected.push((nx as usize, ny as usize, Cell::OpStone));
+                    nx -= dx;
+                    ny -= dy;
+                }
+                _ => break,
+            }
+        }
+
+        affected
+    }
+
+    fn update_cell_score(
+        &mut self,
+        board: &Board,
+        x: usize,
+        y: usize,
+        dir_idx: usize,
+        player: Cell,
+    ) {
+        let idx = Self::cell_index(x, y);
+        let p_idx = Self::player_index(player);
+
+        let old_score = self.scores[p_idx][idx][dir_idx];
+        self.totals[p_idx] -= old_score;
+
+        let new_score = Self::evaluate_sequence_for_cell(board, x, y, dir_idx, player);
+        self.scores[p_idx][idx][dir_idx] = new_score;
+        self.totals[p_idx] += new_score;
+    }
+
+    fn clear_cell_scores(&mut self, x: usize, y: usize, player: Cell) {
+        let idx = Self::cell_index(x, y);
+        let p_idx = Self::player_index(player);
+
+        for dir_idx in 0..4 {
+            let old_score = self.scores[p_idx][idx][dir_idx];
+            self.totals[p_idx] -= old_score;
+            self.scores[p_idx][idx][dir_idx] = 0;
+        }
+    }
+
+    pub fn on_stone_placed(&mut self, board: &Board, x: usize, y: usize, player: Cell) {
+        for dir_idx in 0..4 {
+            let affected = Self::collect_affected_stones(board, x, y, dir_idx);
+            for (ax, ay, ap) in &affected {
+                self.update_cell_score(board, *ax, *ay, dir_idx, *ap);
+            }
+            self.update_cell_score(board, x, y, dir_idx, player);
+        }
+    }
+
+    pub fn on_stone_removed(&mut self, board: &Board, x: usize, y: usize, old_player: Cell) {
+        self.clear_cell_scores(x, y, old_player);
+
+        for dir_idx in 0..4 {
+            let affected = Self::collect_affected_stones(board, x, y, dir_idx);
+            for (ax, ay, ap) in &affected {
+                self.update_cell_score(board, *ax, *ay, dir_idx, *ap);
+            }
+        }
+    }
+
+    pub fn rebuild_from_board(&mut self, board: &Board) {
+        self.clear();
+
+        for y in 0..BOARD_SIZE {
+            for x in 0..BOARD_SIZE {
+                let cell = board.get_cell(x, y);
+                if cell == Some(Cell::MyStone) || cell == Some(Cell::OpStone) {
+                    let player = cell.unwrap();
+                    let p_idx = Self::player_index(player);
+                    let idx = Self::cell_index(x, y);
+
+                    for dir_idx in 0..4 {
+                        let score = Self::evaluate_sequence_for_cell(board, x, y, dir_idx, player);
+                        self.scores[p_idx][idx][dir_idx] = score;
+                        self.totals[p_idx] += score;
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub struct GameState {
     size: usize,
     is_initialized: bool,
@@ -23,6 +265,7 @@ pub struct GameState {
     board: Board,
     zobrist: ZobristKeys,
     tt: TranspositionTable,
+    inc_scores: IncrementalScores,
 }
 
 impl GameState {
@@ -34,6 +277,7 @@ impl GameState {
             board: Board::default(),
             zobrist: ZobristKeys::new(),
             tt: TranspositionTable::new(),
+            inc_scores: IncrementalScores::new(),
         }
     }
 
@@ -46,6 +290,7 @@ impl GameState {
         self.game_in_progress = false;
         self.board.clear();
         self.tt.clear();
+        self.inc_scores.clear();
         "OK".to_string()
     }
 
@@ -60,6 +305,7 @@ impl GameState {
             self.board.set_cell(x, y, cell).unwrap();
             if cell != Cell::Empty {
                 self.board.update_hash(self.zobrist.stone_key(idx, cell));
+                self.inc_scores.on_stone_placed(&self.board, x, y, cell);
             }
         }
     }
@@ -73,6 +319,10 @@ impl GameState {
                     .update_hash(self.zobrist.stone_key(idx, old_cell));
             }
             self.board.set_cell(x, y, Cell::Empty).unwrap();
+            if old_cell == Cell::MyStone || old_cell == Cell::OpStone {
+                self.inc_scores
+                    .on_stone_removed(&self.board, x, y, old_cell);
+            }
         }
     }
 
@@ -138,6 +388,7 @@ impl GameState {
         }
         self.game_in_progress = true;
         self.board.clear();
+        self.inc_scores.clear();
         Ok(())
     }
 
@@ -170,6 +421,7 @@ impl GameState {
         if !self.is_initialized {
             self.handle_start(20);
         }
+        self.inc_scores.rebuild_from_board(&self.board);
         self.generate_move()
     }
 
@@ -180,6 +432,7 @@ impl GameState {
         self.game_in_progress = false;
         self.board.clear();
         self.tt.clear();
+        self.inc_scores.clear();
         "OK".to_string()
     }
 
@@ -561,6 +814,7 @@ impl GameState {
         best_move
     }
 
+    #[cfg(test)]
     fn evaluate(&self, player: Cell) -> i32 {
         let mut total_score = 0;
         let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
@@ -581,6 +835,11 @@ impl GameState {
     }
 
     fn evaluate_position(&self) -> i32 {
+        self.inc_scores.evaluate_position()
+    }
+
+    #[cfg(test)]
+    fn evaluate_position_full_scan(&self) -> i32 {
         let my_score = self.evaluate(Cell::MyStone);
         let opp_score = self.evaluate(Cell::OpStone);
         my_score - opp_score
@@ -937,12 +1196,12 @@ mod tests {
         game.handle_start(20);
 
         for x in 6..10 {
-            game.board.set_cell(x, 10, Cell::MyStone).unwrap();
+            game.place_stone(x, 10, Cell::MyStone);
         }
-        game.board.set_cell(5, 10, Cell::OpStone).unwrap();
+        game.place_stone(5, 10, Cell::OpStone);
 
         for x in 0..4 {
-            game.board.set_cell(x, 5, Cell::OpStone).unwrap();
+            game.place_stone(x, 5, Cell::OpStone);
         }
 
         let response = game.handle_turn(15, 15);
@@ -998,5 +1257,161 @@ mod tests {
         assert!(game.handle_turn(100, 100).contains("ERROR"));
         assert!(game.handle_turn(0, 100).contains("ERROR"));
         assert!(game.handle_turn(100, 0).contains("ERROR"));
+    fn test_incremental_scores_single_stone() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        game.place_stone(10, 10, Cell::MyStone);
+
+        let incremental = game.evaluate_position();
+        let full_scan = game.evaluate_position_full_scan();
+        assert_eq!(incremental, full_scan);
+    }
+
+    #[test]
+    fn test_incremental_scores_horizontal_line() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for x in 5..9 {
+            game.place_stone(x, 10, Cell::MyStone);
+        }
+
+        let incremental = game.evaluate_position();
+        let full_scan = game.evaluate_position_full_scan();
+        assert_eq!(incremental, full_scan);
+    }
+
+    #[test]
+    fn test_incremental_scores_mixed_stones() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        game.place_stone(10, 10, Cell::MyStone);
+        game.place_stone(11, 10, Cell::MyStone);
+        game.place_stone(12, 10, Cell::OpStone);
+        game.place_stone(10, 11, Cell::OpStone);
+        game.place_stone(10, 12, Cell::OpStone);
+
+        let incremental = game.evaluate_position();
+        let full_scan = game.evaluate_position_full_scan();
+        assert_eq!(incremental, full_scan);
+    }
+
+    #[test]
+    fn test_incremental_scores_after_removal() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        game.place_stone(10, 10, Cell::MyStone);
+        game.place_stone(11, 10, Cell::MyStone);
+        game.place_stone(12, 10, Cell::MyStone);
+
+        let before_removal = game.evaluate_position();
+        assert_eq!(before_removal, game.evaluate_position_full_scan());
+
+        game.remove_stone(11, 10);
+
+        let after_removal = game.evaluate_position();
+        let full_scan = game.evaluate_position_full_scan();
+        assert_eq!(after_removal, full_scan);
+    }
+
+    #[test]
+    fn test_incremental_scores_place_remove_place() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        game.place_stone(10, 10, Cell::MyStone);
+        game.place_stone(11, 10, Cell::OpStone);
+
+        game.remove_stone(11, 10);
+        game.place_stone(11, 10, Cell::MyStone);
+
+        let incremental = game.evaluate_position();
+        let full_scan = game.evaluate_position_full_scan();
+        assert_eq!(incremental, full_scan);
+    }
+
+    #[test]
+    fn test_incremental_scores_diagonal() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for i in 0..4 {
+            game.place_stone(5 + i, 5 + i, Cell::MyStone);
+        }
+        game.place_stone(4, 4, Cell::OpStone);
+
+        let incremental = game.evaluate_position();
+        let full_scan = game.evaluate_position_full_scan();
+        assert_eq!(incremental, full_scan);
+    }
+
+    #[test]
+    fn test_incremental_scores_complex_pattern() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        let moves = [
+            (10, 10, Cell::MyStone),
+            (11, 10, Cell::OpStone),
+            (9, 10, Cell::MyStone),
+            (10, 9, Cell::OpStone),
+            (10, 11, Cell::MyStone),
+            (12, 10, Cell::OpStone),
+            (8, 10, Cell::MyStone),
+            (10, 8, Cell::OpStone),
+        ];
+
+        for (x, y, player) in moves {
+            game.place_stone(x, y, player);
+            assert_eq!(
+                game.evaluate_position(),
+                game.evaluate_position_full_scan(),
+                "Mismatch after placing stone at ({}, {})",
+                x,
+                y
+            );
+        }
+    }
+
+    #[test]
+    fn test_incremental_scores_many_removals() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        for i in 0..5 {
+            game.place_stone(5 + i, 10, Cell::MyStone);
+        }
+        assert_eq!(game.evaluate_position(), game.evaluate_position_full_scan());
+
+        for i in (0..5).rev() {
+            game.remove_stone(5 + i, 10);
+            assert_eq!(
+                game.evaluate_position(),
+                game.evaluate_position_full_scan(),
+                "Mismatch after removing stone at ({}, 10)",
+                5 + i
+            );
+        }
+
+        assert_eq!(game.evaluate_position(), 0);
+    }
+
+    #[test]
+    fn test_incremental_scores_rebuild() {
+        let mut game = GameState::new();
+        game.handle_start(20);
+
+        game.board.set_cell(10, 10, Cell::MyStone).unwrap();
+        game.board.set_cell(11, 10, Cell::MyStone).unwrap();
+        game.board.set_cell(12, 10, Cell::OpStone).unwrap();
+
+        game.inc_scores.rebuild_from_board(&game.board);
+
+        let incremental = game.evaluate_position();
+        let full_scan = game.evaluate_position_full_scan();
+        assert_eq!(incremental, full_scan);
     }
 }
