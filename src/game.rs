@@ -499,6 +499,7 @@ impl GameState {
         self.generate_move()
     }
 
+    #[allow(dead_code)]
     pub fn game_over(&self) -> Option<Cell> {
         self.game_over_from_last_move(None)
     }
@@ -671,8 +672,8 @@ impl GameState {
                     if my_count >= THREAT_SEGMENT_MIN_STONES
                         || opp_count >= THREAT_SEGMENT_MIN_STONES
                     {
-                        for index in 0..empty_count {
-                            let (candidate_x, candidate_y) = empty_positions[index];
+                        for &(candidate_x, candidate_y) in empty_positions.iter().take(empty_count)
+                        {
                             if self.board.is_empty(candidate_x, candidate_y) {
                                 GameState::add_candidate(mask, self.size, candidate_x, candidate_y);
                             }

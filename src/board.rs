@@ -100,6 +100,7 @@ impl Board {
             .filter(move |&(x, y)| self.is_empty(x, y))
     }
 
+    #[allow(dead_code)]
     pub fn is_full(&self) -> bool {
         self.iter_empty().next().is_none()
     }
