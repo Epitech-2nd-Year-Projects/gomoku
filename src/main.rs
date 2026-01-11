@@ -72,7 +72,10 @@ fn process_command(
         Command::Turn(x, y) => Some(game.handle_turn(x, y)),
         Command::Begin => Some(game.handle_begin()),
         Command::Board => Some(handle_board_section(lines, game)),
-        Command::Info(_, _) => None,
+        Command::Info(key, value) => {
+            game.handle_info(&key, &value);
+            None
+        }
         Command::About => Some(
             "name=\"pbrain-brainrot\", version=\"1.0.0\", author=\"Brainrot\", country=\"FR\""
                 .to_string(),

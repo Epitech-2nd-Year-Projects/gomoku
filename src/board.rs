@@ -105,34 +105,58 @@ impl Board {
     }
 
     pub fn check_five_in_a_row(&self, player: Cell) -> bool {
-        let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
-
-        for y in 0..self.size {
-            for x in 0..self.size {
-                if self.get_cell(x, y) != Some(player) {
+        for row_index in 0..self.size {
+            for column_index in 0..self.size {
+                if self.get_cell(column_index, row_index) != Some(player) {
                     continue;
                 }
 
-                for &(dx, dy) in &directions {
-                    let mut count = 1;
-                    for step in 1..5 {
-                        let nx = x as isize + dx * step;
-                        let ny = y as isize + dy * step;
-
-                        if nx < 0 || ny < 0 {
-                            break;
-                        }
-
-                        if self.get_cell(nx as usize, ny as usize) == Some(player) {
-                            count += 1;
-                        } else {
-                            break;
-                        }
-                    }
-                    if count >= 5 {
-                        return true;
-                    }
+                if self.check_five_from(column_index, row_index, player) {
+                    return true;
                 }
+            }
+        }
+        false
+    }
+
+    pub fn check_five_from(&self, x: usize, y: usize, player: Cell) -> bool {
+        if self.get_cell(x, y) != Some(player) {
+            return false;
+        }
+
+        let directions = [(1, 0), (0, 1), (1, 1), (1, -1)];
+
+        for &(delta_x, delta_y) in &directions {
+            let mut count = 1usize;
+
+            let mut next_x = x as isize + delta_x;
+            let mut next_y = y as isize + delta_y;
+            while next_x >= 0
+                && next_y >= 0
+                && next_x < self.size as isize
+                && next_y < self.size as isize
+                && self.get_cell(next_x as usize, next_y as usize) == Some(player)
+            {
+                count += 1;
+                next_x += delta_x;
+                next_y += delta_y;
+            }
+
+            next_x = x as isize - delta_x;
+            next_y = y as isize - delta_y;
+            while next_x >= 0
+                && next_y >= 0
+                && next_x < self.size as isize
+                && next_y < self.size as isize
+                && self.get_cell(next_x as usize, next_y as usize) == Some(player)
+            {
+                count += 1;
+                next_x -= delta_x;
+                next_y -= delta_y;
+            }
+
+            if count >= 5 {
+                return true;
             }
         }
         false

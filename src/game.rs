@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 const CANDIDATE_RADIUS: isize = 2;
 const CANDIDATE_CAP: usize = 80;
+const THREAT_SEGMENT_MIN_STONES: usize = 3;
 const CENTER_CELLS: [(usize, usize); 4] = [(10, 10), (9, 9), (9, 10), (10, 9)];
 
 const SCORE_OPEN_FOUR: i32 = 50000;
@@ -18,12 +19,22 @@ const SCORE_WIN: i32 = 100000;
 const MIN_EVAL_SCORE: i32 = -200000;
 const MAX_EVAL_SCORE: i32 = 200000;
 
-const TIME_BUDGET: Duration = Duration::from_secs(5);
+const PATTERN_OPEN_FOUR_BONUS: i32 = 15000;
+const PATTERN_CLOSED_FOUR_BONUS: i32 = 4000;
+const PATTERN_OPEN_THREE_BONUS: i32 = 1500;
+const PATTERN_CLOSED_THREE_BONUS: i32 = 200;
+const PATTERN_OPEN_TWO_BONUS: i32 = 50;
+const PATTERN_CLOSED_TWO_BONUS: i32 = 10;
+
+const DEFAULT_TIMEOUT_MS: u64 = 5000;
+const DEFAULT_TT_MEMORY_MB: usize = 48;
+const ASPIRATION_WINDOW: i32 = 4000;
 const MAX_SEARCH_DEPTH: usize = 20;
 const MAX_QUIESCENCE_DEPTH: usize = 4;
 
 const BOARD_SIZE: usize = 20;
 const DIRECTIONS: [(isize, isize); 4] = [(1, 0), (0, 1), (1, 1), (1, -1)];
+const SEGMENT_LENGTH: usize = 5;
 
 #[derive(Default, Clone, Copy)]
 pub struct ThreatInfo {
@@ -301,11 +312,15 @@ pub struct GameState {
     inc_scores: IncrementalScores,
     killer_moves: [[Option<(usize, usize)>; 2]; MAX_SEARCH_DEPTH],
     history: [[i32; 400]; 2],
+    timeout_turn: Option<Duration>,
+    time_left: Option<Duration>,
+    memory_limit_mb: Option<usize>,
+    occupied_count: usize,
 }
 
 impl GameState {
     pub fn new() -> Self {
-        GameState {
+        let mut game = GameState {
             size: 0,
             is_initialized: false,
             game_in_progress: false,
@@ -315,7 +330,13 @@ impl GameState {
             inc_scores: IncrementalScores::new(),
             killer_moves: [[None; 2]; MAX_SEARCH_DEPTH],
             history: [[0; 400]; 2],
-        }
+            timeout_turn: None,
+            time_left: None,
+            memory_limit_mb: Some(DEFAULT_TT_MEMORY_MB),
+            occupied_count: 0,
+        };
+        game.update_transposition_table(DEFAULT_TT_MEMORY_MB);
+        game
     }
 
     pub fn handle_start(&mut self, size: usize) -> String {
@@ -330,20 +351,94 @@ impl GameState {
         self.inc_scores.clear();
         self.killer_moves = [[None; 2]; MAX_SEARCH_DEPTH];
         self.history = [[0; 400]; 2];
+        self.occupied_count = 0;
+        self.time_left = None;
         "OK".to_string()
+    }
+
+    pub fn handle_info(&mut self, name: &str, value: &str) {
+        let key = name.trim().to_ascii_lowercase();
+        let numeric_value = value.trim().parse::<u64>().ok();
+
+        match key.as_str() {
+            "timeout_turn" => {
+                if let Some(milliseconds) = numeric_value {
+                    self.timeout_turn = Some(Duration::from_millis(milliseconds));
+                }
+            }
+            "time_left" => {
+                if let Some(milliseconds) = numeric_value {
+                    self.time_left = Some(Duration::from_millis(milliseconds));
+                }
+            }
+            "max_memory" => {
+                if let Some(megabytes) = numeric_value.map(|limit| limit as usize) {
+                    self.memory_limit_mb = Some(megabytes);
+                    self.update_transposition_table(megabytes);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn update_transposition_table(&mut self, memory_limit_mb: usize) {
+        let entry_size = std::mem::size_of::<crate::zobrist::TTEntry>();
+        let capped_mb = memory_limit_mb.min(70);
+        let max_bytes = capped_mb.saturating_mul(1024 * 1024);
+        let target_bytes = max_bytes.saturating_mul(7) / 10;
+        let requested_entries = target_bytes / entry_size;
+        if requested_entries > 0 {
+            self.tt.resize(requested_entries);
+        }
+    }
+
+    fn current_time_budget(&self) -> Duration {
+        let timeout_ms = self
+            .timeout_turn
+            .map(|limit| limit.as_millis() as u64)
+            .unwrap_or(DEFAULT_TIMEOUT_MS);
+        let mut limit_ms = timeout_ms;
+
+        if let Some(time_left) = self.time_left {
+            let time_left_ms = time_left.as_millis() as u64;
+            if time_left_ms > 0 {
+                limit_ms = limit_ms.min(time_left_ms);
+            }
+        }
+
+        if limit_ms == 0 {
+            return Duration::from_millis(1);
+        }
+
+        let mut safe_ms = limit_ms.saturating_mul(9) / 10;
+        if limit_ms < 50 {
+            safe_ms = limit_ms;
+        } else if safe_ms < 50 {
+            safe_ms = 50;
+        }
+
+        Duration::from_millis(safe_ms)
     }
 
     #[inline]
     fn place_stone(&mut self, x: usize, y: usize, cell: Cell) {
+        if cell == Cell::Empty {
+            self.remove_stone(x, y);
+            return;
+        }
+
         if let Some(idx) = self.board.get_index(x, y) {
             let old_cell = self.board.get_cell(x, y).unwrap_or(Cell::Empty);
-            if old_cell != Cell::Empty {
+            if old_cell == Cell::Empty {
+                self.occupied_count += 1;
+            } else {
                 self.board
                     .update_hash(self.zobrist.stone_key(idx, old_cell));
             }
+
             self.board.set_cell(x, y, cell).unwrap();
-            if cell != Cell::Empty {
-                self.board.update_hash(self.zobrist.stone_key(idx, cell));
+            self.board.update_hash(self.zobrist.stone_key(idx, cell));
+            if cell == Cell::MyStone || cell == Cell::OpStone {
                 self.inc_scores.on_stone_placed(&self.board, x, y, cell);
             }
         }
@@ -354,6 +449,7 @@ impl GameState {
         if let Some(idx) = self.board.get_index(x, y) {
             let old_cell = self.board.get_cell(x, y).unwrap_or(Cell::Empty);
             if old_cell != Cell::Empty {
+                self.occupied_count = self.occupied_count.saturating_sub(1);
                 self.board
                     .update_hash(self.zobrist.stone_key(idx, old_cell));
             }
@@ -393,7 +489,10 @@ impl GameState {
         self.place_stone(x, y, Cell::OpStone);
         self.game_in_progress = true;
 
-        if self.game_over().is_some() {
+        if self
+            .game_over_from_last_move(Some((x, y, Cell::OpStone)))
+            .is_some()
+        {
             self.game_in_progress = false;
         }
 
@@ -401,13 +500,24 @@ impl GameState {
     }
 
     pub fn game_over(&self) -> Option<Cell> {
-        if self.board.check_five_in_a_row(Cell::MyStone) {
-            return Some(Cell::MyStone);
+        self.game_over_from_last_move(None)
+    }
+
+    fn game_over_from_last_move(&self, last_move: Option<(usize, usize, Cell)>) -> Option<Cell> {
+        if let Some((move_x, move_y, player)) = last_move {
+            if self.board.check_five_from(move_x, move_y, player) {
+                return Some(player);
+            }
+        } else {
+            if self.board.check_five_in_a_row(Cell::MyStone) {
+                return Some(Cell::MyStone);
+            }
+            if self.board.check_five_in_a_row(Cell::OpStone) {
+                return Some(Cell::OpStone);
+            }
         }
-        if self.board.check_five_in_a_row(Cell::OpStone) {
-            return Some(Cell::OpStone);
-        }
-        if self.board.is_full() {
+
+        if self.occupied_count >= self.size.saturating_mul(self.size) {
             return Some(Cell::Empty);
         }
         None
@@ -428,6 +538,7 @@ impl GameState {
         self.game_in_progress = true;
         self.board.clear();
         self.inc_scores.clear();
+        self.occupied_count = 0;
         Ok(())
     }
 
@@ -461,6 +572,7 @@ impl GameState {
             self.handle_start(20);
         }
         self.inc_scores.rebuild_from_board(&self.board);
+        self.recompute_occupied_count();
         self.generate_move()
     }
 
@@ -472,20 +584,34 @@ impl GameState {
         self.board.clear();
         self.tt.clear();
         self.inc_scores.clear();
+        self.occupied_count = 0;
+        self.time_left = None;
         "OK".to_string()
     }
 
     fn count_stones(&self) -> usize {
         let mut count = 0;
-        for y in 0..self.size {
-            for x in 0..self.size {
-                match self.board.get_cell(x, y) {
+        for row_index in 0..self.size {
+            for column_index in 0..self.size {
+                match self.board.get_cell(column_index, row_index) {
                     Some(Cell::MyStone) | Some(Cell::OpStone) => count += 1,
                     _ => {}
                 }
             }
         }
         count
+    }
+
+    fn recompute_occupied_count(&mut self) {
+        let mut count = 0usize;
+        for row_index in 0..self.size {
+            for column_index in 0..self.size {
+                if self.board.get_cell(column_index, row_index) != Some(Cell::Empty) {
+                    count += 1;
+                }
+            }
+        }
+        self.occupied_count = count;
     }
 
     fn center_distance(&self, x: usize, y: usize) -> usize {
@@ -498,6 +624,63 @@ impl GameState {
     fn add_candidate(mask: &mut [bool; 400], size: usize, x: usize, y: usize) {
         let idx = y * size + x;
         mask[idx] = true;
+    }
+
+    fn add_threat_candidates(&self, mask: &mut [bool; 400]) {
+        let board_size = self.size as isize;
+
+        for &(delta_x, delta_y) in &DIRECTIONS {
+            for start_row in 0..self.size {
+                for start_col in 0..self.size {
+                    let end_x = start_col as isize + (SEGMENT_LENGTH as isize - 1) * delta_x;
+                    let end_y = start_row as isize + (SEGMENT_LENGTH as isize - 1) * delta_y;
+                    if end_x < 0 || end_y < 0 || end_x >= board_size || end_y >= board_size {
+                        continue;
+                    }
+
+                    let mut my_count = 0usize;
+                    let mut opp_count = 0usize;
+                    let mut empty_positions = [(0usize, 0usize); SEGMENT_LENGTH];
+                    let mut empty_count = 0usize;
+
+                    for offset in 0..SEGMENT_LENGTH {
+                        let current_x = start_col as isize + offset as isize * delta_x;
+                        let current_y = start_row as isize + offset as isize * delta_y;
+                        let cell = self
+                            .board
+                            .get_cell(current_x as usize, current_y as usize)
+                            .unwrap_or(Cell::Empty);
+                        match cell {
+                            Cell::MyStone => my_count += 1,
+                            Cell::OpStone | Cell::Forbidden => opp_count += 1,
+                            Cell::Empty => {
+                                empty_positions[empty_count] =
+                                    (current_x as usize, current_y as usize);
+                                empty_count += 1;
+                            }
+                        }
+                        if my_count > 0 && opp_count > 0 {
+                            break;
+                        }
+                    }
+
+                    if my_count > 0 && opp_count > 0 {
+                        continue;
+                    }
+
+                    if my_count >= THREAT_SEGMENT_MIN_STONES
+                        || opp_count >= THREAT_SEGMENT_MIN_STONES
+                    {
+                        for index in 0..empty_count {
+                            let (candidate_x, candidate_y) = empty_positions[index];
+                            if self.board.is_empty(candidate_x, candidate_y) {
+                                GameState::add_candidate(mask, self.size, candidate_x, candidate_y);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn generate_candidates(&self) -> Vec<(usize, usize)> {
@@ -566,6 +749,8 @@ impl GameState {
             }
         }
 
+        self.add_threat_candidates(&mut mask);
+
         let mut candidates = Vec::new();
         for y in 0..self.size {
             for x in 0..self.size {
@@ -620,7 +805,7 @@ impl GameState {
 
         for (x, y) in candidates {
             self.place_stone(x, y, player);
-            let is_win = self.board.check_five_in_a_row(player);
+            let is_win = self.board.check_five_from(x, y, player);
             self.remove_stone(x, y);
 
             if is_win {
@@ -642,7 +827,10 @@ impl GameState {
         if let Some((x, y)) = move_coords {
             self.place_stone(x, y, Cell::MyStone);
 
-            if self.game_over().is_some() {
+            if self
+                .game_over_from_last_move(Some((x, y, Cell::MyStone)))
+                .is_some()
+            {
                 self.game_in_progress = false;
             }
 
@@ -714,12 +902,13 @@ impl GameState {
         player: Cell,
         deadline: Instant,
         qdepth: usize,
+        last_move: Option<(usize, usize, Cell)>,
     ) -> Option<i32> {
         if Instant::now() >= deadline {
             return None;
         }
 
-        if let Some(winner) = self.game_over() {
+        if let Some(winner) = self.game_over_from_last_move(last_move) {
             match winner {
                 Cell::MyStone => {
                     return Some(if player == Cell::MyStone {
@@ -774,7 +963,14 @@ impl GameState {
             } else {
                 Cell::MyStone
             };
-            let score = -self.quiescence(-beta, -alpha, next_player, deadline, qdepth - 1)?;
+            let score = -self.quiescence(
+                -beta,
+                -alpha,
+                next_player,
+                deadline,
+                qdepth - 1,
+                Some((x, y, player)),
+            )?;
             self.remove_stone(x, y);
 
             if score >= beta {
@@ -795,12 +991,13 @@ impl GameState {
         beta: i32,
         player: Cell,
         deadline: Instant,
+        last_move: Option<(usize, usize, Cell)>,
     ) -> Option<i32> {
         if Instant::now() >= deadline {
             return None;
         }
 
-        if let Some(winner) = self.game_over() {
+        if let Some(winner) = self.game_over_from_last_move(last_move) {
             match winner {
                 Cell::MyStone => {
                     return Some(if player == Cell::MyStone {
@@ -822,7 +1019,14 @@ impl GameState {
         }
 
         if depth == 0 {
-            return self.quiescence(alpha, beta, player, deadline, MAX_QUIESCENCE_DEPTH);
+            return self.quiescence(
+                alpha,
+                beta,
+                player,
+                deadline,
+                MAX_QUIESCENCE_DEPTH,
+                last_move,
+            );
         }
 
         let hash = self.compute_hash_with_turn(player);
@@ -882,6 +1086,8 @@ impl GameState {
 
         let mut best_value = MIN_EVAL_SCORE;
         let mut best_move = None;
+        let mut is_first_move = true;
+
         for (x, y) in candidates {
             if self.validate_move(x, y).is_err() {
                 continue;
@@ -893,8 +1099,40 @@ impl GameState {
             } else {
                 Cell::MyStone
             };
-            let value = -self.negamax(depth - 1, -beta, -alpha, next_player, deadline)?;
+
+            let value = if is_first_move {
+                -self.negamax(
+                    depth - 1,
+                    -beta,
+                    -alpha,
+                    next_player,
+                    deadline,
+                    Some((x, y, player)),
+                )?
+            } else {
+                let mut score = -self.negamax(
+                    depth - 1,
+                    -alpha - 1,
+                    -alpha,
+                    next_player,
+                    deadline,
+                    Some((x, y, player)),
+                )?;
+                if score > alpha && score < beta {
+                    score = -self.negamax(
+                        depth - 1,
+                        -beta,
+                        -alpha,
+                        next_player,
+                        deadline,
+                        Some((x, y, player)),
+                    )?;
+                }
+                score
+            };
+
             self.remove_stone(x, y);
+            is_first_move = false;
 
             if value > best_value {
                 best_value = value;
@@ -940,6 +1178,56 @@ impl GameState {
         hash
     }
 
+    fn search_root(
+        &mut self,
+        depth: usize,
+        mut alpha: i32,
+        beta: i32,
+        deadline: Instant,
+        candidates: &[(usize, usize)],
+    ) -> Option<(Option<(usize, usize)>, i32)> {
+        let mut best_value = MIN_EVAL_SCORE;
+        let mut best_move = None;
+
+        for (move_x, move_y) in candidates {
+            if self.validate_move(*move_x, *move_y).is_err() {
+                continue;
+            }
+
+            self.place_stone(*move_x, *move_y, Cell::MyStone);
+            let result = self.negamax(
+                depth - 1,
+                -beta,
+                -alpha,
+                Cell::OpStone,
+                deadline,
+                Some((*move_x, *move_y, Cell::MyStone)),
+            );
+            self.remove_stone(*move_x, *move_y);
+
+            match result {
+                Some(child_value) => {
+                    let value = -child_value;
+                    if value > best_value {
+                        best_value = value;
+                        best_move = Some((*move_x, *move_y));
+                    }
+                    if value > alpha {
+                        alpha = value;
+                    }
+                    if alpha >= beta {
+                        break;
+                    }
+                }
+                None => {
+                    return None;
+                }
+            }
+        }
+
+        Some((best_move, best_value))
+    }
+
     fn find_best_move(&mut self) -> Option<(usize, usize)> {
         let mut candidates = self.generate_candidates();
         if candidates.is_empty() {
@@ -957,49 +1245,53 @@ impl GameState {
             }
         }
 
-        let deadline = Instant::now() + TIME_BUDGET;
+        let deadline = Instant::now() + self.current_time_budget();
         let mut best_move: Option<(usize, usize)> = None;
+        let mut best_score: Option<i32> = None;
 
         for depth in 1..=MAX_SEARCH_DEPTH {
             if Instant::now() >= deadline {
                 break;
             }
 
-            let mut depth_best_move = None;
-            let mut alpha = MIN_EVAL_SCORE;
-            let beta = MAX_EVAL_SCORE;
-            let mut search_completed = true;
+            let (alpha, beta) = if let Some(previous_score) = best_score {
+                let alpha = (previous_score - ASPIRATION_WINDOW).max(MIN_EVAL_SCORE);
+                let beta = (previous_score + ASPIRATION_WINDOW).min(MAX_EVAL_SCORE);
+                (alpha, beta)
+            } else {
+                (MIN_EVAL_SCORE, MAX_EVAL_SCORE)
+            };
 
-            for (x, y) in &candidates {
-                if self.validate_move(*x, *y).is_err() {
-                    continue;
-                }
-
-                self.place_stone(*x, *y, Cell::MyStone);
-                let result = self.negamax(depth - 1, -beta, -alpha, Cell::OpStone, deadline);
-                self.remove_stone(*x, *y);
-
-                match result {
-                    Some(child_value) => {
-                        let value = -child_value;
-                        if value > alpha {
-                            alpha = value;
-                            depth_best_move = Some((*x, *y));
-                        }
-                    }
-                    None => {
-                        search_completed = false;
-                        break;
-                    }
-                }
+            let mut result = self.search_root(depth, alpha, beta, deadline, &candidates);
+            if result.is_none() {
+                break;
             }
 
-            if search_completed {
-                best_move = depth_best_move;
-                if let Some((bx, by)) = depth_best_move {
-                    if let Some(pos) = candidates.iter().position(|&(x, y)| x == bx && y == by) {
-                        candidates.swap(0, pos);
-                    }
+            let (mut depth_best_move, mut depth_score) = result.unwrap();
+
+            if best_score.is_some() && (depth_score <= alpha || depth_score >= beta) {
+                if Instant::now() >= deadline {
+                    break;
+                }
+                result =
+                    self.search_root(depth, MIN_EVAL_SCORE, MAX_EVAL_SCORE, deadline, &candidates);
+                if result.is_none() {
+                    break;
+                }
+                let (full_move, full_score) = result.unwrap();
+                depth_best_move = full_move;
+                depth_score = full_score;
+            }
+
+            best_move = depth_best_move;
+            best_score = Some(depth_score);
+
+            if let Some((best_x, best_y)) = depth_best_move {
+                if let Some(pos) = candidates
+                    .iter()
+                    .position(|&(x, y)| x == best_x && y == best_y)
+                {
+                    candidates.swap(0, pos);
                 }
             }
         }
@@ -1028,14 +1320,128 @@ impl GameState {
     }
 
     fn evaluate_position(&self) -> i32 {
-        self.inc_scores.evaluate_position()
+        self.inc_scores.evaluate_position() + self.evaluate_pattern_bonus()
+    }
+
+    fn evaluate_pattern_bonus(&self) -> i32 {
+        let mut total_score = 0i32;
+        let board_size = self.size as isize;
+
+        for &(delta_x, delta_y) in &DIRECTIONS {
+            for start_row in 0..self.size {
+                for start_col in 0..self.size {
+                    let end_x = start_col as isize + (SEGMENT_LENGTH as isize - 1) * delta_x;
+                    let end_y = start_row as isize + (SEGMENT_LENGTH as isize - 1) * delta_y;
+                    if end_x < 0 || end_y < 0 || end_x >= board_size || end_y >= board_size {
+                        continue;
+                    }
+
+                    let mut my_count = 0usize;
+                    let mut opp_count = 0usize;
+
+                    for offset in 0..SEGMENT_LENGTH {
+                        let current_x = start_col as isize + offset as isize * delta_x;
+                        let current_y = start_row as isize + offset as isize * delta_y;
+                        match self
+                            .board
+                            .get_cell(current_x as usize, current_y as usize)
+                            .unwrap_or(Cell::Empty)
+                        {
+                            Cell::MyStone => my_count += 1,
+                            Cell::OpStone => opp_count += 1,
+                            Cell::Forbidden => {
+                                my_count = 1;
+                                opp_count = 1;
+                                break;
+                            }
+                            Cell::Empty => {}
+                        }
+                        if my_count > 0 && opp_count > 0 {
+                            break;
+                        }
+                    }
+
+                    if my_count > 0 && opp_count > 0 {
+                        continue;
+                    }
+
+                    let before_x = start_col as isize - delta_x;
+                    let before_y = start_row as isize - delta_y;
+                    let after_x = start_col as isize + SEGMENT_LENGTH as isize * delta_x;
+                    let after_y = start_row as isize + SEGMENT_LENGTH as isize * delta_y;
+
+                    let before_open = if before_x >= 0
+                        && before_y >= 0
+                        && before_x < board_size
+                        && before_y < board_size
+                    {
+                        self.board.get_cell(before_x as usize, before_y as usize)
+                            == Some(Cell::Empty)
+                    } else {
+                        false
+                    };
+
+                    let after_open = if after_x >= 0
+                        && after_y >= 0
+                        && after_x < board_size
+                        && after_y < board_size
+                    {
+                        self.board.get_cell(after_x as usize, after_y as usize) == Some(Cell::Empty)
+                    } else {
+                        false
+                    };
+
+                    let open_ends = u8::from(before_open) + u8::from(after_open);
+                    if my_count > 0 {
+                        total_score += Self::pattern_segment_score(my_count, open_ends);
+                    } else if opp_count > 0 {
+                        total_score -= Self::pattern_segment_score(opp_count, open_ends);
+                    }
+                }
+            }
+        }
+
+        total_score
+    }
+
+    fn pattern_segment_score(stone_count: usize, open_ends: u8) -> i32 {
+        match stone_count {
+            4 => {
+                if open_ends == 2 {
+                    PATTERN_OPEN_FOUR_BONUS
+                } else if open_ends == 1 {
+                    PATTERN_CLOSED_FOUR_BONUS
+                } else {
+                    0
+                }
+            }
+            3 => {
+                if open_ends == 2 {
+                    PATTERN_OPEN_THREE_BONUS
+                } else if open_ends == 1 {
+                    PATTERN_CLOSED_THREE_BONUS
+                } else {
+                    0
+                }
+            }
+            2 => {
+                if open_ends == 2 {
+                    PATTERN_OPEN_TWO_BONUS
+                } else if open_ends == 1 {
+                    PATTERN_CLOSED_TWO_BONUS
+                } else {
+                    0
+                }
+            }
+            _ => 0,
+        }
     }
 
     #[cfg(test)]
     fn evaluate_position_full_scan(&self) -> i32 {
         let my_score = self.evaluate(Cell::MyStone);
         let opp_score = self.evaluate(Cell::OpStone);
-        my_score - opp_score
+        my_score - opp_score + self.evaluate_pattern_bonus()
     }
 
     #[cfg(test)]

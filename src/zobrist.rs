@@ -84,22 +84,51 @@ impl Default for TTEntry {
     }
 }
 
-const TT_SIZE: usize = 1 << 22; // 4,194,304 entries (~67MB)
+const DEFAULT_TT_ENTRIES: usize = 1 << 21;
+const MIN_TT_ENTRIES: usize = 1 << 15;
 
 pub struct TranspositionTable {
     entries: Vec<TTEntry>,
+    mask: usize,
 }
 
 impl TranspositionTable {
     pub fn new() -> Self {
+        Self::with_entries(DEFAULT_TT_ENTRIES)
+    }
+
+    pub fn with_entries(requested_entries: usize) -> Self {
+        let entries = Self::normalize_entries(requested_entries);
         Self {
-            entries: vec![TTEntry::default(); TT_SIZE],
+            entries: vec![TTEntry::default(); entries],
+            mask: entries - 1,
         }
+    }
+
+    pub fn resize(&mut self, requested_entries: usize) {
+        let entries = Self::normalize_entries(requested_entries);
+        if entries == self.entries.len() {
+            return;
+        }
+        *self = Self::with_entries(entries);
     }
 
     #[inline]
     fn index(&self, hash: u64) -> usize {
-        (hash as usize) & (TT_SIZE - 1)
+        (hash as usize) & self.mask
+    }
+
+    fn normalize_entries(requested_entries: usize) -> usize {
+        let entries = requested_entries.max(MIN_TT_ENTRIES);
+        let mut power = 1usize;
+        while power.saturating_mul(2) <= entries {
+            power = power.saturating_mul(2);
+        }
+        if power == 0 {
+            MIN_TT_ENTRIES
+        } else {
+            power
+        }
     }
 
     pub fn probe(&self, hash: u64) -> Option<&TTEntry> {
