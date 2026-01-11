@@ -14,9 +14,13 @@ const SCORE_OPEN_TWO: i32 = 100;
 const SCORE_CLOSED_TWO: i32 = 10;
 
 const SCORE_DOUBLE_THREAT: i32 = 80000;
+const SCORE_WIN: i32 = 100000;
+const MIN_EVAL_SCORE: i32 = -200000;
+const MAX_EVAL_SCORE: i32 = 200000;
 
 const TIME_BUDGET: Duration = Duration::from_secs(5);
 const MAX_SEARCH_DEPTH: usize = 20;
+const MAX_QUIESCENCE_DEPTH: usize = 4;
 
 const BOARD_SIZE: usize = 20;
 const DIRECTIONS: [(isize, isize); 4] = [(1, 0), (0, 1), (1, 1), (1, -1)];
@@ -719,16 +723,16 @@ impl GameState {
             match winner {
                 Cell::MyStone => {
                     return Some(if player == Cell::MyStone {
-                        100000
+                        SCORE_WIN
                     } else {
-                        -100000
+                        -SCORE_WIN
                     });
                 }
                 Cell::OpStone => {
                     return Some(if player == Cell::OpStone {
-                        100000
+                        SCORE_WIN
                     } else {
-                        -100000
+                        -SCORE_WIN
                     });
                 }
                 Cell::Empty => return Some(0),
@@ -800,16 +804,16 @@ impl GameState {
             match winner {
                 Cell::MyStone => {
                     return Some(if player == Cell::MyStone {
-                        100000
+                        SCORE_WIN
                     } else {
-                        -100000
+                        -SCORE_WIN
                     });
                 }
                 Cell::OpStone => {
                     return Some(if player == Cell::OpStone {
-                        100000
+                        SCORE_WIN
                     } else {
-                        -100000
+                        -SCORE_WIN
                     });
                 }
                 Cell::Empty => return Some(0),
@@ -818,7 +822,7 @@ impl GameState {
         }
 
         if depth == 0 {
-            return self.quiescence(alpha, beta, player, deadline, 4);
+            return self.quiescence(alpha, beta, player, deadline, MAX_QUIESCENCE_DEPTH);
         }
 
         let hash = self.compute_hash_with_turn(player);
@@ -871,12 +875,12 @@ impl GameState {
                 return b_is_killer.cmp(&a_is_killer);
             }
 
-            let a_hist = self.history[player_idx][ay * 20 + ax];
-            let b_hist = self.history[player_idx][by * 20 + bx];
+            let a_hist = self.history[player_idx][ay * BOARD_SIZE + ax];
+            let b_hist = self.history[player_idx][by * BOARD_SIZE + bx];
             b_hist.cmp(&a_hist)
         });
 
-        let mut best_value = -200000;
+        let mut best_value = MIN_EVAL_SCORE;
         let mut best_move = None;
         for (x, y) in candidates {
             if self.validate_move(x, y).is_err() {
@@ -906,7 +910,7 @@ impl GameState {
                         self.killer_moves[depth][0] = Some((x, y));
                     }
                     let player_idx = if player == Cell::MyStone { 0 } else { 1 };
-                    let idx = y * 20 + x;
+                    let idx = y * BOARD_SIZE + x;
                     self.history[player_idx][idx] += (depth * depth) as i32;
                 }
                 break;
@@ -962,8 +966,8 @@ impl GameState {
             }
 
             let mut depth_best_move = None;
-            let mut alpha = -200000;
-            let beta = 200000;
+            let mut alpha = MIN_EVAL_SCORE;
+            let beta = MAX_EVAL_SCORE;
             let mut search_completed = true;
 
             for (x, y) in &candidates {
@@ -1812,41 +1816,35 @@ mod tests {
 
     #[test]
     fn test_turn_at_edge_row_0() {
-        let mut game = GameState::new();
-        game.handle_start(20);
-
         let positions = [(0, 0), (5, 0), (10, 0), (15, 0), (19, 0)];
         for (x, y) in positions {
-            if game.board.get_cell(x, y) == Some(Cell::Empty) {
-                let response = game.handle_turn(x, y);
-                assert!(
-                    !response.contains("ERROR"),
-                    "Turn at ({}, {}) should succeed",
-                    x,
-                    y
-                );
-                assert_eq!(game.board.get_cell(x, y), Some(Cell::OpStone));
-            }
+            let mut game = GameState::new();
+            game.handle_start(20);
+            let response = game.handle_turn(x, y);
+            assert!(
+                !response.contains("ERROR"),
+                "Turn at ({}, {}) should succeed",
+                x,
+                y
+            );
+            assert_eq!(game.board.get_cell(x, y), Some(Cell::OpStone));
         }
     }
 
     #[test]
     fn test_turn_at_edge_row_19() {
-        let mut game = GameState::new();
-        game.handle_start(20);
-
         let positions = [(0, 19), (5, 19), (10, 19), (15, 19), (19, 19)];
         for (x, y) in positions {
-            if game.board.get_cell(x, y) == Some(Cell::Empty) {
-                let response = game.handle_turn(x, y);
-                assert!(
-                    !response.contains("ERROR"),
-                    "Turn at ({}, {}) should succeed",
-                    x,
-                    y
-                );
-                assert_eq!(game.board.get_cell(x, y), Some(Cell::OpStone));
-            }
+            let mut game = GameState::new();
+            game.handle_start(20);
+            let response = game.handle_turn(x, y);
+            assert!(
+                !response.contains("ERROR"),
+                "Turn at ({}, {}) should succeed",
+                x,
+                y
+            );
+            assert_eq!(game.board.get_cell(x, y), Some(Cell::OpStone));
         }
     }
 
